@@ -49,6 +49,7 @@ source_files <- c(
   "payer_type.R",
   "duckdb_store.R",
   "state_medians.R",
+  "ownership.R",
   "payer_ratios.R",
   "addon_economics.R",
   "validation.R",
