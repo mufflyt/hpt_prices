@@ -74,11 +74,17 @@ needles = set()
 for r in csv.DictReader(open(answers)):
     if r["stat"] == "median_negotiated" or r["stat"].startswith("max_"):
         v = r["expected"]
-        needles.add(v)
         whole = v.split(".")[0]
-        # whole-number forms too, except ones that read as years (citations)
-        if len(whole) >= 3 and not re.fullmatch(r"(19|20)[0-9]{2}", whole):
-            needles.add(whole)
+        # the value as written, plus its whole-number form when that is specific enough:
+        # at least 4 digits and not a year (dates and citations would match otherwise)
+        for n in (v, whole):
+            if re.fullmatch(r"(19|20)[0-9]{2}", n):
+                continue
+            if n == whole and len(n) < 4 and "." not in v:
+                continue
+            if n == whole and n != v and len(n) < 4:
+                continue
+            needles.add(n)
     if r["mrf_file_id"]:
         needles.add(r["mrf_file_id"])
 hits = []
