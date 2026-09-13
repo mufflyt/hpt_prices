@@ -9,7 +9,7 @@ if (!base::exists("run_validation", mode = "function")) {
 }
 
 validation_base_rates <- function() {
-  base::c("45378" = 1289, "45380" = 1659, "58100" = 213, "58300" = 114, "43775" = 15000, "43644" = 20000, "742" = 31231)
+  base::c("45378" = 1200, "45380" = 1600, "58100" = 200, "58300" = 110, "43775" = 15000, "43644" = 20000, "742" = 30000)
 }
 
 validation_payers <- function() {
@@ -126,8 +126,8 @@ fixture_answers <- function(last_updated_on = "2026-04-30", scale = 1) {
     last_updated_on = last_updated_on,
     code = base::c("45378", "45378", "45378", "45378", "58100"),
     stat = base::c("median_negotiated", "max_gross", "n_rows", "n_payers", "median_negotiated"),
-    expected = scale * base::c(stats::median(denver_45378), 1289 * 2.5, 4, 4,
-                               stats::median(213 * validation_payers()$payer_mult))
+    expected = scale * base::c(stats::median(denver_45378), validation_base_rates()[["45378"]] * 2.5, 4, 4,
+                               stats::median(validation_base_rates()[["58100"]] * validation_payers()$payer_mult))
   )
 }
 
@@ -244,15 +244,18 @@ testthat::test_that("known answers fail on the same file version and warn on a d
   testthat::expect_equal(check_known_answers(db, sources = "own_crawl")$status, "skip")
 })
 
-testthat::test_that("default known answers cover both live hospitals", {
-  answers <- known_answers()
-  testthat::expect_setequal(base::unique(answers$ccn), base::c("060011", "450097"))
-  testthat::expect_equal(answers$expected[answers$ccn == "060011" & answers$code == "45378" & answers$stat == "median_negotiated"], 1289.13)
-  testthat::expect_equal(answers$expected[answers$ccn == "450097" & answers$code == "45378" & answers$stat == "n_rows"], 305)
-  # HCA repeats each DRG contract on many lines: 4429 over 652 rows, not the collapsed 4786
-  testthat::expect_equal(answers$expected[answers$ccn == "450097" & answers$code %in% base::c("742", "743") & answers$stat == "median_negotiated"], base::c(4429, 4429))
-  testthat::expect_equal(base::unique(answers$mrf_file_id), base::c("a1ee6eef0e7f00613896e1e9da0810c3", "ebe5eeff98506266831a35269ba061a9"))
+testthat::test_that("known answers load from the private file, or skip when it is absent", {
+  missing <- known_answers(base::tempfile(fileext = ".csv"))
+  testthat::expect_equal(base::nrow(missing), 0)
+  testthat::expect_equal(check_known_answers(validation_fixture_path(), missing)$status, "skip")
+
+  path <- base::file.path(repo_root_path(), "config", "known_answers.csv")
+  testthat::skip_if_not(base::file.exists(path), "config/known_answers.csv is kept only in the private repository")
+  answers <- known_answers(path)
+  testthat::expect_gt(base::nrow(answers), 0)
   testthat::expect_true(base::all(answers$stat %in% base::c("median_negotiated", "max_gross", "max_cash", "n_rows", "n_payers")))
+  testthat::expect_false(base::anyNA(answers$expected))
+  testthat::expect_true(base::all(stringr::str_detect(answers$ccn, "^[0-9A-Z]{6}$")))
 })
 
 # ---- 3. plausibility ---------------------------------------------------------
@@ -556,8 +559,8 @@ testthat::test_that("OPPS benchmark passes in range, warns outside, skips unpaid
   medians <- fixture_medians()
   result <- check_opps_benchmark(medians, fixture_opps())
   testthat::expect_equal(result$status[result$check_id == "benchmark_opps_45378"], "pass")
-  # national medicare median = median of hospital medians 0.8 x 1289 x (1, 1.1, 0.9)
-  testthat::expect_equal(result$metric[result$check_id == "benchmark_opps_45378"], 0.8 * 1289 / 950.10, tolerance = 1e-6)
+  # national medicare median = median of hospital medians 0.8 x base x (1, 1.1, 0.9)
+  testthat::expect_equal(result$metric[result$check_id == "benchmark_opps_45378"], 0.8 * validation_base_rates()[["45378"]] / 950.10, tolerance = 1e-6)
   testthat::expect_equal(result$status[result$check_id == "benchmark_opps_58300"], "skip")
   testthat::expect_match(result$detail[result$check_id == "benchmark_opps_58300"], "status indicator E1")
 

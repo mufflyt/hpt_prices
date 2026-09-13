@@ -11,7 +11,7 @@ testthat::test_that("summaries attribute a shared file's rates to every CCN it c
     tibble::tibble(
       source = "trilliant", mrf_file_id = "aaa", concept = "emb", code = "58100",
       type_verified = TRUE, payer_name = base::c("Aetna", "Cigna", NA),
-      plan_name = base::c("PPO", "HMO", NA), negotiated_dollar = base::c(200, 226, NA),
+      plan_name = base::c("PPO", "HMO", NA), negotiated_dollar = base::c(190, 210, NA),
       gross = 330, discounted_cash = 115
     ),
     dir
@@ -28,7 +28,7 @@ testthat::test_that("summaries attribute a shared file's rates to every CCN it c
 
   testthat::expect_setequal(summary$ccn, base::c("060011", "06001F"))
   testthat::expect_equal(base::unique(summary$n_payers), 2)
-  testthat::expect_equal(base::unique(summary$negotiated_median), 213)
+  testthat::expect_equal(base::unique(summary$negotiated_median), 200)
   testthat::expect_equal(base::unique(summary$gross_median), 330)
 })
 
@@ -41,7 +41,7 @@ testthat::test_that("rate-pattern flags catch colonoscopy case rates and DRG 742
       concept = base::c(base::rep("colonoscopy", 3), base::rep("drg_uterine_nonmalignant", 2), base::rep("colonoscopy", 3)),
       code = base::c("45378", "45380", "45385", "742", "743", "45378", "45380", "45385"),
       payer_name = "Payer", plan_name = "Plan",
-      negotiated_dollar = base::c(2431, 2431, 2431, 4429, 4429, 1289, 1659, 1659)
+      negotiated_dollar = base::c(2400, 2400, 2400, 4400, 4400, 1200, 1600, 1600)
     ),
     dir
   )

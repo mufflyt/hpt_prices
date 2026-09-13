@@ -1,0 +1,17 @@
+hospital,ccn,npi,hospital_name,trilliant_id,mrf_file_id,last_updated_on,code,stat,expected,note
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,45378,median_negotiated,1289.13,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,45380,median_negotiated,1658.815,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,58100,median_negotiated,213.27,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,58300,median_negotiated,113.76,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,742,median_negotiated,31230.5,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,743,median_negotiated,25172.51,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,J7298,median_negotiated,2207.165,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,45378,max_gross,1778.23,
+Denver Health Medical Center,060011,,Denver Health and Hospital Authority,denver_health_medical_center-d6c20,a1ee6eef0e7f00613896e1e9da0810c3,2026-04-30,45378,max_cash,622.39,
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,45378,median_negotiated,2431,
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,45378,n_rows,305,
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,45378,n_payers,17,
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,58100,median_negotiated,2017,
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,742,median_negotiated,4429,the file repeats each contract on many charge lines; an earlier build that collapsed repeats gave 4786
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,743,median_negotiated,4429,the file repeats each contract on many charge lines; an earlier build that collapsed repeats gave 4786
+HCA Houston Healthcare Southeast,450097,1174576698,HCA Houston Healthcare Southeast,,ebe5eeff98506266831a35269ba061a9,2026-03-01,742,n_rows,652,

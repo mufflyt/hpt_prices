@@ -88,31 +88,33 @@ plausible_rate_sql <- function(expr) {
 #' Fee type. Most files leave billing class blank, and a blank used to count
 #' as facility, which let professional fees into facility medians ("45378 -
 #' PF COLONOSCOPY", "HOSPITALIST BP 45378", or plain "DIAGNOSTIC COLONOSCOPY"
-#' at $160-380 against an OPPS facility rate near $930). A blank-class row
+#' priced at physician-fee level, a fraction of the OPPS facility rate). A blank-class row
 #' with a gross charge below the geometric midpoint of the two typical gross
 #' charges is now professional (`fee_type_inferred`). This is done only when
 #' each typical rests on at least `fee_type_min_files` files and the facility
 #' typical is at least `fee_type_min_separation()` times the professional one.
 #' Validated against the Medicare Advantage rate on the same blank-class lines
 #' (a line is professional when its MA rate is below the geometric midpoint
-#' of the national MA facility and professional rates), share classified
-#' consistently, gross rule vs "blank = facility" (2026-07-21 snapshot):
-#' 58120 90% vs 62%, 45378 81% vs 77%, G0121 74% vs 72%, but 58100 65% vs
-#' 66%. 58100 and 58300 separate by only 2.2x, hence the 2.5x floor: their
-#' blank rows stay facility. The rule also moves some true facility lines to
-#' professional (214 of 1,222 checked 45378 lines), so analyses drop inferred
-#' professional rows from facility fees but do not count them as
-#' professional fees either (rate_row_filter_sql()).
+#' of the national MA facility and professional rates): the gross rule
+#' classified more lines consistently than "blank = facility" for the
+#' colonoscopy codes and D&C, but not for EMB, whose facility and
+#' professional gross charges separate by less than 2.5x, hence the floor
+#' (EMB and IUD blank rows stay facility). The rule also moves some true
+#' facility lines to professional, so analyses drop inferred professional
+#' rows from facility fees but do not count them as professional fees either
+#' (rate_row_filter_sql()). Numbers: docs/appendix.md, section E2, in the
+#' private repository.
 #'
 #' Case line. Some hospitals list an office procedure twice: a clinic line
-#' and an operating-room case line carrying the same CPT code (CHS files list
-#' 58300 at about $190 gross and again as "INSERT INTRAUTERINE DEVICE" at
-#' $20,000-75,000). A charge line of an outpatient procedure whose gross
+#' and an operating-room case line carrying the same CPT code (some files list
+#' 58300 at a clinic gross charge and again as "INSERT INTRAUTERINE DEVICE" at
+#' a gross charge two orders of magnitude higher). A charge line of an
+#' outpatient procedure whose gross
 #' exceeds `case_line_multiple()` times the typical gross for its fee type is
 #' flagged `case_line`. Why 10x: the 58300 facility gross distribution
-#' (2026-07-21 snapshot) has a clinic mode at $180-560 and a second mode of OR
-#' lines from about $5,000 to $100,000, with the trough at $3,000-4,000. A
-#' within-file rule (5x the file's lowest line) was rejected because it
+#' (2026-07-21 snapshot) has a clinic mode and a separate mode of OR lines,
+#' and 10x the typical gross falls in the trough between them (docs/appendix.md,
+#' section E3, in the private repository). A within-file rule (5x the file's lowest line) was rejected because it
 #' flagged ordinary colonoscopy lines whose negotiated rates were no higher
 #' than the rest.
 #'

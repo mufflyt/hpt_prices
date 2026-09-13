@@ -97,6 +97,18 @@ Grouped by date. There is no package version.
   figures are aggregates of Trilliant-derived data).
 - GitHub Actions (`.github/workflows/r-tests.yml`) runs the offline test suite with the DuckDB CLI
   on every pull request and push to `main`.
+- Public code copy, github.com/mufflyt/hpt_prices_public, built by `tools/export_public.sh`. It
+  keeps code, tests, config, tools, CI, and the download guide, and leaves out figures, the
+  CHANGELOG/NEWS/appendix/methods docs, and `config/known_answers.csv`. The export refuses to write
+  if a known-answer value or file hash appears anywhere in the tree. CI runs there, since this
+  repository is private.
+- To make the code publishable, data-derived numbers moved out of it:
+  - The known per-hospital values are now `config/known_answers.csv`, kept only here; without it
+    the known-answer check skips.
+  - Code comments state each rule's evidence qualitatively and point to `docs/appendix.md` for the
+    numbers.
+  - Payer-rule notes drop lake row counts.
+  - Test fixtures use synthetic values instead of ones matching real hospital rates.
 - `R/geo_figures.R`, `analysis/15_geographic_figures.R`: colonoscopy (45378) state maps of the
   commercial, Medicaid, and Medicare Advantage rate relative to Medicare, and a state ranking
   chart by Census region (2 x 2 panels, landscape) with commercial and Medicaid on each state's row

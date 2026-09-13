@@ -51,10 +51,10 @@ office_procedure_concepts <- function() {
 #'   "a flat rate for a package of items and services triggered by a primary
 #'   procedure" (per diem likewise prices a stay), so a case rate for 58300 or
 #'   58100 prices the surgical case, not the insertion or the biopsy. In the
-#'   2026-07-21 snapshot, commercial 58300 case-rate rows had a median of
-#'   $1,750-2,940 against $226-255 for fee-schedule and percent-of-charges
-#'   rows. Colonoscopy is not an office procedure: its case rate is the
-#'   endoscopy encounter itself, so it is kept.
+#'   2026-07-21 snapshot, commercial 58300 case-rate rows ran about ten times
+#'   the fee-schedule and percent-of-charges rows. Colonoscopy is not an
+#'   office procedure: its case rate is the endoscopy encounter itself, so it
+#'   is kept.
 rate_row_filter_sql <- function() {
   base::paste0(
     "NOT (fee_type_inferred AND fee_type = 'professional') ",
@@ -142,7 +142,7 @@ state_median_headline <- function(medians, min_hospitals = 3L) {
     "45378" = "colonoscopy_45378", "58100" = "emb_58100", "58300" = "iud_insertion_58300",
     "43775" = "sleeve_gastrectomy_43775", "43644" = "gastric_bypass_43644",
     # the inpatient bariatric facility payment; CPT-coded bariatric lines are
-    # usually partial (national Medicare: 43775 $1,062 vs MS-DRG 621 $12,907)
+    # usually partial (a small fraction of the national Medicare DRG 621 rate)
     "621" = "bariatric_ms_drg_621"
   )
 

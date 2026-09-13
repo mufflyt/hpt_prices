@@ -137,8 +137,8 @@ addon_parameter_values <- function(params, which = base::c("base", "low", "high"
 #'
 #' Case A's base primary price is MS-DRG 621 (obesity O.R. procedure without
 #' CC/MCC): CPT-coded 43775/43644 facility lines in hospital MRFs are often
-#' partial (national Medicare 43775 median $1,062 against $12,932 for DRG 621),
-#' so they are sensitivity variants. DRG variants use the sleeve OR slot, the
+#' partial (their national Medicare median is a small fraction of the DRG 621
+#' payment), so they are sensitivity variants. DRG variants use the sleeve OR slot, the
 #' most common bariatric operation.
 #'
 #' `secondary_procedure` and `secondary_item` are the two components of the

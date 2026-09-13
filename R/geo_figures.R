@@ -11,10 +11,9 @@
 #' cost) get their state's rural wage index from Table 3, so their ratio is
 #' against what OPPS would pay in that area.
 #'
-#' Hospital-listed "medicare" rates are not used as the denominator: only
-#' 627 hospitals list one for 45378, fewer than 5 in 16 states, and some
-#' state medians are implausible for a national fee schedule (Utah $169 with
-#' 6 hospitals, Montana $2,011 with 3).
+#' Hospital-listed "medicare" rates are not used as the denominator: few
+#' hospitals list one, many states have fewer than 5, and some state medians
+#' are implausible for a national fee schedule.
 #'
 #' A state's value is the median of its hospitals' ratios. Maps use
 #' mysterymaps::mysterymaps_geographic_map() for the state polygons,

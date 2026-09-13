@@ -71,6 +71,7 @@ signed link, then downloading, verifying, and extracting it on any machine with 
 | `tools/etag_verify.py` | Checks the zip against the server's S3 multipart ETag, with resumable per-part hashing |
 | `tools/fast_unzip.py` | Extracts at disk speed with CRC checks and resume (macOS `unzip` managed 7 MB/s) |
 | `tools/refresh_readme_figures.sh` | Copies the current figures into `docs/figures/` for this README |
+| `tools/export_public.sh` | Builds the public code copy ([hpt_prices_public](https://github.com/mufflyt/hpt_prices_public)): code, tests, config, tools, and the download guide, without figures, data-derived docs, or known answers; refuses to export if a known-answer value or file hash leaks |
 
 ## Pipeline
 
