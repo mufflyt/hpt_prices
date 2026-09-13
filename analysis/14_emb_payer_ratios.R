@@ -5,7 +5,7 @@
 
 base::source("R/00_source_all.R")
 
-emb_codes <- base::c("58100", "58120", "58558", "45378", "88305")
+emb_codes <- base::c("58100", "58120", "58558", "45378", "88305", "99213")
 exclude <- if (base::file.exists(hpt_path("output", "median_excluded_file_ids.csv"))) {
   read_csv_chr(hpt_path("output", "median_excluded_file_ids.csv"))$mrf_file_id
 }
