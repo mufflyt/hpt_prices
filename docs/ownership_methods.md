@@ -11,10 +11,10 @@ and the sourced system list `config/pe_hospital_systems.csv`. Outputs go to
 July 2026. That is almost entirely Lifepoint Health and ScionHealth, both owned by Apollo
 funds. These hospitals post higher commercial prices than nonprofit hospitals in the same
 state for office-type gynecologic and endoscopic procedures:
-- colonoscopy (45378): +35%;
+- colonoscopy (45378): +34%;
 - endometrial biopsy (58100): +61%;
-- IUD insertion (58300): +39%;
-- hysteroscopy (58558): +20%.
+- IUD insertion (58300): +38%;
+- hysteroscopy (58558): +19%.
 
 They post about the same price for D&C (58120), and lower prices for inpatient bariatric
 surgery (MS-DRG 621 -22%, sleeve 43775 -44%).
@@ -34,7 +34,7 @@ PE flag picks up, are a separate group and have too few prices to estimate.
 | CMS Hospital General Information (roster, `dim_hospital`) | downloaded 2026-09-12 | hospital type, roster ownership |
 | AHRQ Compendium of US Health Systems, 2023 hospital linkage | 2023 | health system (cluster), beds |
 | Kim et al. (2026) PE hospital deal list | GitHub `sungilkim94/Kim-PE-Data` commit `d1796fd`, downloaded 2026-09-13 to `reference/kim_pe_deals/` with provenance | cross-check only |
-| `hpt.duckdb` | build of 2026-09-13 05:31 (with 58120, 58558) | negotiated rates |
+| `hpt.duckdb` | final build of 2026-09-13 05:31: 7,753,542 rates, 3,924 files, 3,303 CCNs, with 58120 and 58558 | negotiated rates |
 
 ### Public PE-hospital datasets checked
 
@@ -221,13 +221,12 @@ CCN x code x payer type:
 - outpatient concepts (`outpatient_concepts()`) drop explicitly inpatient rows;
 - median within each payer/plan contract, then median across the hospital's contracts;
 - cash: median discounted cash price over distinct charge lines;
-- files in `output/median_excluded_file_ids.csv` (40) are excluded;
+- files in `output/median_excluded_file_ids.csv` (42 at the final run) are excluded;
 - CCN-matched rates only.
 
 A test rebuilds `compute_state_medians()` exactly from these hospital prices.
-`outpatient_concepts()` does not yet include `dc` (58120) or `hysteroscopy_sampling`
-(58558), so explicitly inpatient rows for those codes count here, as they do in the state
-medians.
+`outpatient_concepts()` includes `dc` (58120) and `hysteroscopy_sampling` (58558), so
+explicitly inpatient rows are dropped for those codes too.
 
 Codes: 45378, 58100, 58300, 58120, 58558, 43775, MS-DRG 621. Payer types: commercial,
 Medicare Advantage, Medicaid, exchange, cash. Sample: acute and critical-access
@@ -254,7 +253,7 @@ For each code x payer type x definition:
 - **`group_clusters`** lists the largest clusters in each group, so you can see what
   drives each estimate.
 
-## Results (run of 2026-09-13, `hpt.duckdb` built 05:31)
+## Results (final run of 2026-09-13 on the 05:31 `hpt.duckdb`)
 
 Adjusted % difference vs nonprofit hospitals in the same state (95% CI); n = group
 hospitals; sys = clusters (health systems) among them. **With 3 to 8 PE clusters,
@@ -265,29 +264,31 @@ adds one hospital in most cells. "NA" means one cluster, so no CI.
 
 | Code | Payer | PE strict | PE broad | PE broad incl. creditor | CMS PE flag group | For-profit, not PE |
 |---|---|---|---|---|---|---|
-| 45378 colonoscopy | commercial | +35% (+14% to +60%); n=39, 3 sys | +18% (-7% to +49%); n=67, 7 sys | +12% (-14% to +47%); n=71, 8 sys | -50% (NA); n=3, 1 sys | +9% (-7% to +27%); n=377 |
-| 45378 colonoscopy | Medicare Adv. | -11% (-32% to +17%); n=15, 3 sys | +16% (-15% to +59%); n=36, 7 sys | +15% (-13% to +52%); n=40, 8 sys | +6% (NA); n=3 | +23% (+3% to +47%); n=289 |
+| 45378 colonoscopy | commercial | +34% (+14% to +58%); n=39, 3 sys | +18% (-7% to +48%); n=67, 7 sys | +12% (-15% to +46%); n=71, 8 sys | -50% (NA); n=3, 1 sys | +8% (-7% to +26%); n=377 |
+| 45378 colonoscopy | Medicare Adv. | -11% (-32% to +17%); n=15, 3 sys | +17% (-14% to +59%); n=36, 7 sys | +15% (-13% to +52%); n=40, 8 sys | +6% (NA); n=3 | +23% (+3% to +47%); n=289 |
 | 45378 colonoscopy | Medicaid | +15% (-11% to +48%); n=11, 2 sys | +33% (+6% to +66%); n=24, 5 sys | +34% (+8% to +67%); n=28, 6 sys | +44% (NA); n=3 | -6% (-26% to +20%); n=213 |
 | 45378 colonoscopy | exchange | +15% (-1% to +33%); n=19, 3 sys | -5% (-25% to +19%); n=32, 6 sys | -10% (-29% to +13%); n=36, 7 sys | -43% (NA); n=3 | +20% (+3% to +39%); n=266 |
-| 58100 EMB | commercial | +61% (+36% to +90%); n=8, 3 sys | +13% (-25% to +71%); n=16, 6 sys | -8% (-45% to +53%); n=20, 7 sys | -60% (NA); n=3 | +63% (+11% to +140%); n=281 |
+| 58100 EMB | commercial | +61% (+36% to +90%); n=8, 3 sys | +13% (-25% to +71%); n=16, 6 sys | -8% (-45% to +53%); n=20, 7 sys | -60% (NA); n=3 | +62% (+10% to +140%); n=281 |
 | 58100 EMB | Medicaid | not estimated (n=2) | +261% (+135% to +454%); n=5, 5 sys | +145% (+37% to +337%); n=9, 6 sys | +52% (NA); n=3 | -6% (-22% to +13%); n=142 |
-| 58300 IUD insertion | commercial | +39% (-4% to +100%); n=26, 3 sys | +32% (-3% to +81%); n=31, 5 sys | +5% (-38% to +78%); n=35, 6 sys | -81% (NA); n=3 | +90% (+37% to +163%); n=289 |
+| 58300 IUD insertion | commercial | +38% (-5% to +99%); n=26, 3 sys | +31% (-4% to +80%); n=31, 5 sys | +5% (-38% to +77%); n=35, 6 sys | -81% (NA); n=3 | +89% (+37% to +162%); n=289 |
 | 58300 IUD insertion | Medicaid | +269% (+150% to +444%); n=6, 2 sys | +293% (+171% to +471%); n=8, 4 sys | +122% (-11% to +450%); n=12, 5 sys | -26% (NA); n=3 | +36% (+2% to +83%); n=145 |
-| 58120 D&C | commercial | -1% (-18% to +20%); n=25, 3 sys | -5% (-20% to +14%); n=29, 5 sys | -7% (-22% to +11%); n=33, 6 sys | -18% (NA); n=3 | +3% (-13% to +21%); n=282 |
+| 58120 D&C | commercial | -2% (-19% to +19%); n=25, 3 sys | -6% (-22% to +13%); n=29, 5 sys | -7% (-22% to +10%); n=33, 6 sys | -18% (NA); n=3 | +2% (-13% to +20%); n=282 |
 | 58120 D&C | Medicaid | +17% (-44% to +147%); n=3, 2 sys | +49% (-17% to +167%); n=5, 4 sys | +87% (-2% to +256%); n=9, 5 sys | +150% (NA); n=3 | -30% (-47% to -8%); n=151 |
-| 58558 hysteroscopy | commercial | +20% (+5% to +36%); n=37, 3 sys | +13% (-6% to +35%); n=44, 5 sys | +10% (-10% to +33%); n=48, 6 sys | -19% (NA); n=3 | +8% (-9% to +29%); n=311 |
+| 58558 hysteroscopy | commercial | +19% (+5% to +36%); n=37, 3 sys | +12% (-6% to +34%); n=44, 5 sys | +9% (-10% to +32%); n=48, 6 sys | -19% (NA); n=3 | +8% (-10% to +28%); n=311 |
 | 58558 hysteroscopy | Medicaid | -22% (-45% to +11%); n=9, 2 sys | -16% (-42% to +22%); n=12, 4 sys | +19% (-45% to +160%); n=16, 5 sys | +225% (NA); n=3 | -31% (-48% to -9%); n=174 |
 | MS-DRG 621 | commercial | -22% (-30% to -12%); n=18, 3 sys | -27% (-37% to -15%); n=30, 5 sys | -26% (-36% to -14%); n=35, 7 sys | -10% (NA); n=3 | -12% (-20% to -4%); n=350 |
 | MS-DRG 621 | Medicaid | +49% (NA); n=4, 1 sys | +43% (+13% to +81%); n=8, 3 sys | +54% (+11% to +114%); n=13, 5 sys | +95% (NA); n=3 | +6% (-17% to +36%); n=165 |
 | 43775 sleeve | commercial | -44% (-62% to -19%); n=13, 3 sys | -51% (-65% to -31%); n=20, 6 sys | -49% (-62% to -33%); n=24, 7 sys | -43% (NA); n=3 | -13% (-31% to +10%); n=253 |
 
 The distressed-fund group (Quorum and other GoldenTree / Davidson Kempner hospitals, plus
-Coast Plaza) has only 1 to 2 priced hospitals per cell and is not estimated. In the new
-database, Forrest City (040019) and Mesa View (291307) link only to 88305-only files;
-they had colonoscopy prices in the previous build. Medicare Advantage, exchange, and cash
-cells are in `ownership_model_results.csv`. Strict-PE cash prices exist only for Lifepoint
-hospitals (one cluster), so their estimates have no CI. They are large: colonoscopy +77%,
-IUD insertion +583%, D&C +122%, hysteroscopy +102%.
+Coast Plaza) has only 1 to 2 priced hospitals per cell and is not estimated. Forrest City
+and Mesa View publish through apps.para-hcfs.com script URLs, and their own files list
+only 88305 among our codes. The previous build cross-linked other hospitals' para-hcfs
+files to them; the final build does not.
+Medicare Advantage, exchange, and cash cells are in `ownership_model_results.csv`.
+Strict-PE cash prices exist only for Lifepoint hospitals (one cluster), so their
+estimates have no CI. They are large: colonoscopy +75%, IUD insertion +566%, D&C +116%,
+hysteroscopy +100%.
 
 ### Robustness
 
