@@ -92,3 +92,11 @@ testthat::test_that("system weighting stats report correlation, spread, and move
   testthat::expect_equal(stats$state_r2_hospital_level, stats$state_r2_system_level)
   testthat::expect_equal(stats$n_states, 6L)
 })
+
+testthat::test_that("every state and DC falls in exactly one Census region", {
+  abb <- base::c(datasets::state.abb, "DC")
+  regions <- census_region(abb)
+  testthat::expect_false(base::anyNA(regions))
+  testthat::expect_equal(base::as.integer(base::table(regions)[base::c("Northeast", "Midwest", "South", "West")]), base::c(9L, 12L, 17L, 13L))
+  testthat::expect_true(base::is.na(census_region("PR")))
+})

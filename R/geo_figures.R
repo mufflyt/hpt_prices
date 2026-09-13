@@ -525,6 +525,93 @@ state_rank_chart <- function(summary, payer_types = base::c("commercial", "medic
   plot
 }
 
+#' US Census regions (the four the Census Bureau defines), with DC in the South
+census_region <- function(abb) {
+  regions <- base::list(
+    Northeast = base::c("CT", "ME", "MA", "NH", "RI", "VT", "NJ", "NY", "PA"),
+    Midwest = base::c("IL", "IN", "MI", "OH", "WI", "IA", "KS", "MN", "MO", "NE", "ND", "SD"),
+    South = base::c("DE", "DC", "FL", "GA", "MD", "NC", "SC", "VA", "WV", "AL", "KY", "MS", "TN", "AR", "LA", "OK", "TX"),
+    West = base::c("AZ", "CO", "ID", "MT", "NV", "NM", "UT", "WY", "AK", "CA", "HI", "OR", "WA")
+  )
+  lookup <- stats::setNames(base::rep(base::names(regions), base::lengths(regions)), base::unlist(regions, use.names = FALSE))
+  base::unname(lookup[abb])
+}
+
+#' State ranking by Census region: rate relative to Medicare, two payers per row
+#'
+#' One panel per Census region (2 x 2), so no panel has more than 17 rows and
+#' the figure is landscape. Each state is one row carrying both payers: dot =
+#' state median of hospital ratios, bar = within-state 25th to 75th
+#' percentile, hollow dot = fewer than `min_hospitals` hospitals. The solid
+#' line at 1x is the Medicare OPPS payment at each hospital's wage index;
+#' dashed lines are the national medians. States are ordered by the first
+#' payer's median within each region.
+state_region_chart <- function(summary, national, payer_types = base::c("commercial", "medicaid"),
+                               colours = base::c(commercial = "#b2182b", medicaid = "#2166ac", medicare_advantage = "#4d4d4d"),
+                               limits = base::c(0.1, 8)) {
+  data <- summary |>
+    dplyr::filter(.data$payer_type %in% payer_types) |>
+    dplyr::mutate(region = census_region(.data$state)) |>
+    dplyr::filter(!base::is.na(.data$region))
+  offsets <- stats::setNames(base::seq(0.17, -0.17, length.out = base::length(payer_types)), payer_types)
+  if (base::length(payer_types) == 1L) offsets[] <- 0
+  squish <- function(x) base::pmin(base::pmax(x, limits[1]), limits[2])
+  national <- national |> dplyr::filter(.data$payer_type %in% payer_types)
+
+  region_panel <- function(region_name) {
+    rows <- data |> dplyr::filter(.data$region == region_name)
+    order <- rows |>
+      dplyr::filter(.data$payer_type == payer_types[1]) |>
+      dplyr::arrange(.data$median_ratio) |>
+      dplyr::pull("state")
+    order <- base::c(base::setdiff(base::unique(rows$state), order), order)
+    rows <- rows |>
+      dplyr::mutate(
+        row = base::match(.data$state, order),
+        y = .data$row + offsets[.data$payer_type],
+        payer = base::factor(payer_label(.data$payer_type), levels = payer_label(payer_types)),
+        reliability = dplyr::if_else(.data$low_n, "Fewer than 5 hospitals", "5 or more hospitals")
+      )
+    bands <- tibble::tibble(row = base::seq_along(order)) |> dplyr::filter(.data$row %% 2L == 0L)
+
+    ggplot2::ggplot(rows) +
+      ggplot2::geom_rect(data = bands, ggplot2::aes(ymin = .data$row - 0.5, ymax = .data$row + 0.5),
+                         xmin = -Inf, xmax = Inf, fill = "grey94", colour = NA) +
+      ggplot2::geom_vline(xintercept = 1, colour = "grey15", linewidth = 0.6) +
+      ggplot2::geom_vline(data = national, ggplot2::aes(xintercept = .data$median_ratio, colour = payer_label(.data$payer_type)),
+                          linetype = "dashed", linewidth = 0.45, show.legend = FALSE) +
+      ggplot2::geom_segment(ggplot2::aes(x = squish(.data$p25_ratio), xend = squish(.data$p75_ratio),
+                                         y = .data$y, yend = .data$y, colour = .data$payer),
+                            linewidth = 1.1, alpha = 0.45) +
+      ggplot2::geom_point(ggplot2::aes(x = .data$median_ratio, y = .data$y, colour = .data$payer, shape = .data$reliability),
+                          size = 2.9, stroke = 1.1, fill = "white") +
+      ggplot2::scale_colour_manual(values = stats::setNames(colours[payer_types], payer_label(payer_types)), name = NULL,
+                                   breaks = payer_label(payer_types)) +
+      ggplot2::scale_shape_manual(values = base::c("5 or more hospitals" = 16, "Fewer than 5 hospitals" = 21), name = NULL) +
+      ggplot2::scale_x_continuous(transform = "log", limits = limits, breaks = base::c(0.25, 0.5, 1, 2, 4),
+                                  labels = base::c("0.25x", "0.5x", "Medicare", "2x", "4x"), expand = ggplot2::expansion(0)) +
+      ggplot2::scale_y_continuous(breaks = base::seq_along(order), labels = order, expand = ggplot2::expansion(add = 0.6)) +
+      ggplot2::labs(title = region_name, x = NULL, y = NULL) +
+      ggplot2::theme_minimal(base_size = 12) +
+      ggplot2::theme(
+        panel.grid.major.y = ggplot2::element_blank(), panel.grid.minor = ggplot2::element_blank(),
+        panel.grid.major.x = ggplot2::element_line(colour = "grey85", linewidth = 0.3),
+        plot.title = ggplot2::element_text(face = "bold", size = 13),
+        axis.text.y = ggplot2::element_text(size = 11, colour = "grey10", face = "bold"),
+        axis.text.x = ggplot2::element_text(size = 10.5, colour = "grey20"),
+        legend.position = "bottom", legend.text = ggplot2::element_text(size = 11)
+      )
+  }
+
+  n_rows <- function(region_name) base::length(base::unique(data$state[data$region == region_name]))
+  left <- patchwork::wrap_plots(region_panel("Northeast"), region_panel("South"), ncol = 1,
+                                heights = base::c(n_rows("Northeast"), n_rows("South")))
+  right <- patchwork::wrap_plots(region_panel("Midwest"), region_panel("West"), ncol = 1,
+                                 heights = base::c(n_rows("Midwest"), n_rows("West")))
+  patchwork::wrap_plots(left, right, ncol = 2, guides = "collect") &
+    ggplot2::theme(legend.position = "bottom")
+}
+
 #' Caption text shared by the figures (Trilliant attribution is required by
 #' its terms of service, 2.2(b))
 geo_figure_caption <- function(code, extra = NULL) {
