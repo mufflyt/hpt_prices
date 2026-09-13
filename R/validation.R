@@ -302,32 +302,29 @@ check_medians_current <- function(db_path, out_dir, medians = NULL) {
 
 # ---- 2. Known answers from live Trilliant queries ----------------------------
 
-#' Values read from Trilliant's per-hospital parsed databases on 2026-09-12
+#' Known per-hospital values, read from config/known_answers.csv
 #'
-#' `median_negotiated` is the median of standard_charge_dollar over every row
-#' of the file for that code (not the three-stage median); `n_rows` and
-#' `n_payers` count rows and distinct payer names for the code. MS-DRG 742
-#' and 743 at HCA are 4429 over 652 rows (the file repeats each contract on
-#' many charge lines; an earlier build that collapsed repeats gave 4786).
-#' `mrf_file_id` is the lake's mrf_content_hash for the file.
-known_answers <- function() {
-  denver <- tibble::tibble(
-    hospital = "Denver Health Medical Center", ccn = "060011", npi = NA_character_,
-    hospital_name = "Denver Health and Hospital Authority", trilliant_id = "denver_health_medical_center-d6c20",
-    mrf_file_id = "a1ee6eef0e7f00613896e1e9da0810c3", last_updated_on = "2026-04-30",
-    code = base::c("45378", "45380", "58100", "58300", "742", "743", "J7298", "45378", "45378"),
-    stat = base::c(base::rep("median_negotiated", 7), "max_gross", "max_cash"),
-    expected = base::c(1289.13, 1658.815, 213.27, 113.76, 31230.5, 25172.51, 2207.165, 1778.23, 622.39)
-  )
-  hca <- tibble::tibble(
-    hospital = "HCA Houston Healthcare Southeast", ccn = "450097", npi = "1174576698",
-    hospital_name = "HCA Houston Healthcare Southeast", trilliant_id = NA_character_,
-    mrf_file_id = "ebe5eeff98506266831a35269ba061a9", last_updated_on = "2026-03-01",
-    code = base::c("45378", "45378", "45378", "58100", "742", "743", "742"),
-    stat = base::c("median_negotiated", "n_rows", "n_payers", "median_negotiated", "median_negotiated", "median_negotiated", "n_rows"),
-    expected = base::c(2431, 305, 17, 2017, 4429, 4429, 652)
-  )
-  dplyr::bind_rows(denver, hca)
+#' The values were read from Trilliant's per-hospital parsed databases on
+#' 2026-09-12. They are Trilliant-derived rates, so the file lives only in the
+#' private repository (tools/export_public.sh leaves it out); without it the
+#' known-answer check is skipped. Columns: hospital, ccn, npi, hospital_name,
+#' trilliant_id, mrf_file_id (the lake's mrf_content_hash), last_updated_on,
+#' code, stat, expected. `median_negotiated` is the median of
+#' standard_charge_dollar over every row of the file for that code (not the
+#' three-stage median); `n_rows` and `n_payers` count rows and distinct payer
+#' names for the code.
+known_answers <- function(path = base::file.path(base::getOption("hpt_repo_root", "."), "config", "known_answers.csv")) {
+  columns <- base::c("hospital", "ccn", "npi", "hospital_name", "trilliant_id", "mrf_file_id",
+                     "last_updated_on", "code", "stat", "expected")
+  if (!base::file.exists(path)) {
+    empty <- tibble::as_tibble(stats::setNames(base::rep(base::list(base::character()), base::length(columns)), columns))
+    empty$expected <- base::numeric()
+    return(empty)
+  }
+  answers <- readr::read_csv(path, col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE)
+  require_columns(answers, columns, "config/known_answers.csv")
+  answers$expected <- base::as.numeric(answers$expected)
+  answers[, columns]
 }
 
 #' Per-file statistics for the files that could be each known hospital
@@ -384,6 +381,10 @@ check_known_answers <- function(db_path, answers = known_answers(), sources = va
 
   if (!"trilliant" %in% sources) {
     return(validation_row("known_answer", "known_answer", description, "skip", detail = "no 'trilliant' source in this database"))
+  }
+  if (base::nrow(answers) == 0L) {
+    return(validation_row("known_answer", "known_answer", description, "skip",
+                          detail = "no config/known_answers.csv (kept only in the private repository)"))
   }
 
   candidates <- known_answer_candidates(db_path, answers)
@@ -586,9 +587,9 @@ check_payer_order <- function(medians, code = "45378") {
 #' Payer rows typed self_pay should price near the discounted cash column
 #'
 #' Hospitals list only one or two "Self Pay" payer rows per code, so a code
-#' that sits on both a clinic line and an OR-case line (CHS files list 58300
-#' at $190 and at $20k to $75k gross) gives a median of two that is really
-#' their mean. The discounted-cash price (self_pay_cash) is the robust one.
+#' that sits on both a clinic line and an OR-case line (some files list 58300
+#' at clinic and at operating-room gross charges two orders of magnitude
+#' apart) gives a median of two that is really their mean. The discounted-cash price (self_pay_cash) is the robust one.
 check_self_pay_consistency <- function(medians, low = 0.5, high = 2) {
   rows <- base::lapply(headline_codes(), function(code) {
     self_pay <- national_median(medians, code, "self_pay")

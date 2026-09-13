@@ -1,8 +1,10 @@
 # hpt_prices
 
+[![R tests](https://github.com/mufflyt/hpt_prices/actions/workflows/r-tests.yml/badge.svg)](https://github.com/mufflyt/hpt_prices/actions/workflows/r-tests.yml)
+
 Hospital price transparency prices for colonoscopy, endometrial biopsy, IUD insertion,
-and vaginal hysterectomy, for as many US hospitals as possible, keyed by CMS
-Certification Number (CCN).
+vaginal hysterectomy, and bariatric surgery, for as many US hospitals as possible, keyed by
+CMS Certification Number (CCN).
 
 Every hospital must publish a machine-readable file (MRF) of its standard charges, list
 it in a `cms-hpt.txt` file at the root of the website that hosts it, and link to it from
@@ -25,6 +27,12 @@ checked against the CMS 2026 physician fee schedule RVU file (RVU26C) with
 | vaginal_hysterectomy | 58260-58294 (58293 was deleted and is flagged `active_2026 = FALSE`) |
 | lavh | 58550, 58552, 58553, 58554 |
 | drg_uterine_nonmalignant | MS-DRG 742, 743 (all non-malignant uterine/adnexal inpatient surgery, not only vaginal hysterectomy) |
+| bariatric_surgery | 43644, 43645, 43770, 43775, 43842, 43843, 43845, 43846, 43847 |
+| drg_bariatric | MS-DRG 619, 620, 621 |
+| surgical_pathology | 88305 |
+| dc | 58120 |
+| hysteroscopy_sampling | 58558 |
+| office_visit_em | 99213 (for the emb_colonoscopy office-visit payer ratio) |
 
 A code counts only when its value and its declared code type both match. Hospitals
 reuse the same digits in other code systems (a chargemaster item "58100", APR-DRG 742),
@@ -51,6 +59,20 @@ and those never match. A missing type is kept and flagged `type_verified = FALSE
 5. **Our own crawl** of `cms-hpt.txt` files and MRFs for hospitals Trilliant is missing.
    Seeds: tracker, TPAFS (2022), DoltHub (2022-2023), HIFLD 2020 hospital websites.
 
+## Getting the data
+
+The Trilliant download is about 80 GB. `docs/trilliant_download.md` walks through getting a
+signed link, then downloading, verifying, and extracting it on any machine with the scripts in
+`tools/`:
+
+| Tool | What it does |
+|---|---|
+| `tools/trilliant_download.sh` | Resumable download; optional parallel 1 GiB byte ranges. The signed URL comes from `TRILLIANT_URL` and is never written to disk |
+| `tools/etag_verify.py` | Checks the zip against the server's S3 multipart ETag, with resumable per-part hashing |
+| `tools/fast_unzip.py` | Extracts at disk speed with CRC checks and resume (macOS `unzip` managed 7 MB/s) |
+| `tools/refresh_readme_figures.sh` | Copies the current figures into `docs/figures/` for this README |
+| `tools/export_public.sh` | Builds the public code copy ([hpt_prices_public](https://github.com/mufflyt/hpt_prices_public)): code, tests, config, tools, and the download guide, without figures, data-derived docs, or known answers; refuses to export if a known-answer value or file hash leaks |
+
 ## Pipeline
 
 Run from the repository root. Data goes to `HPT_DATA_DIR` (default: the external drive,
@@ -69,13 +91,20 @@ Rscript analysis/09_build_database.R      # hpt.duckdb star schema (readable fro
 Rscript analysis/10_validate.R            # spot-check validation report
 Rscript analysis/11_state_medians.R       # median price per state x insurance type x code
 Rscript analysis/12_addon_value.R         # is an add-on procedure worth the lost primary capacity?
+Rscript analysis/13_ownership_prices.R    # private-equity vs other hospitals
+Rscript analysis/14_emb_payer_ratios.R    # within-hospital payer-to-Medicare ratios
+Rscript analysis/15_geographic_figures.R  # colonoscopy maps and state ranking, relative to Medicare OPPS
 ```
+
+`12` depends on `11`; `13` to `15` read `hpt.duckdb` directly. After changing a cleaning rule,
+rerun `09` and everything after it.
 
 ### The database (`hpt.duckdb`)
 
 | Table | Grain | Notes |
 |---|---|---|
-| `fact_rate` | file x charge line x code x payer/plan | sorted by (code_id, file_id); ENUM setting, billing class, methodology; `plausible` flag |
+| `fact_rate` | file x charge line x code x payer/plan | sorted by (code_id, file_id); ENUM setting, billing class, methodology; `plausible`, `fee_type` (+ `fee_type_inferred`), and `case_line` flags |
+| `ref_code_gross` | code | typical facility and professional gross, the blank-billing-class cutoff, case-line thresholds |
 | `dim_code` | codebook code | concept, `anchor` (reference code per concept), `active_2026` |
 | `dim_payer` | distinct payer/plan text | `payer_type` from `config/payer_type_rules.csv`; Trilliant's own label kept alongside |
 | `dim_file` | MRF file | source, URL, version, dates, header identifiers |
@@ -83,15 +112,92 @@ Rscript analysis/12_addon_value.R         # is an add-on procedure worth the los
 | `dim_hospital` | CMS CCN | roster plus AHRQ health system |
 | `v_rate`, `v_hospital_rate` | views | denormalized; `v_hospital_rate` has one row per hospital a rate applies to, with state |
 
-State medians are two-stage: first the median across payer/plan rates within each
-hospital, then the median across hospitals in the state. That way a hospital listing 40
-plans counts the same as one listing 3.
+State medians are three-stage: the median of each payer/plan contract's rows, then the
+median across contracts within each hospital, then the median across hospitals in the
+state. That way a hospital listing 40 plans counts the same as one listing 3.
+
+Rows that price a different product than the procedure are left out
+(`rate_row_filter_sql()` in `R/state_medians.R`): explicitly inpatient rows and
+operating-room case lines of outpatient procedures, case-rate and per-diem rows of the
+office procedures (EMB, IUD insertion), and blank-billing-class rows whose gross is
+professional-level. Rules and their evidence: `case_line_multiple()` in `R/duckdb_store.R`.
 
 Every crawl stage is resumable and logs per-item status under `HPT_DATA_DIR/state/`.
 Set `HPT_MAX_ITEMS` for a pilot run.
 
 Lake queries run through the DuckDB CLI (>= 1.5, required for DuckLake 1.0), not the R
 `duckdb` package.
+
+## Figures
+
+Current figures, copied from `HPT_DATA_DIR/output/figures` by `tools/refresh_readme_figures.sh`.
+They show national and state aggregates derived from Trilliant Health data (2026-07-21 snapshot)
+and are committed only because this repository is private. Do not make the repository public, or
+share the images, without Trilliant's permission.
+
+**Colonoscopy facility rates relative to Medicare, by state and Census region.** Each state's
+commercial and Medicaid medians sit on one row; bars are the within-state interquartile range.
+
+![State ranking by Census region](docs/figures/geo2_colonoscopy_state_ranks.png)
+
+**The same ratio as maps.** Commercial rates run about 2.3x Medicare nationally and Medicaid about
+0.78x. States with fewer than 5 hospitals are suppressed (hatched).
+
+![Commercial and Medicaid maps](docs/figures/geo1_colonoscopy_commercial_medicaid_maps.png)
+
+**Is an endometrial biopsy at colonoscopy worth the room time?** Net value per add-on against
+added minutes (first figure) and against the chance the minutes would otherwise have gone to
+another case (second). Commercial stays positive up to about 16 added minutes.
+
+![EMB at colonoscopy, added minutes](docs/figures/addon_threshold_minutes_B.png)
+
+![EMB at colonoscopy, displacement probability](docs/figures/addon_threshold_utilization_B.png)
+
+**One fully booked room day.** Small add-ons cost little until they use up the day's slack; the
+next one displaces a whole primary case.
+
+![Day capacity](docs/figures/addon_day_capacity.png)
+
+<details>
+<summary>Supplementary figures</summary>
+
+IUD insertion at bariatric surgery (case A):
+
+![IUD at bariatric surgery, added minutes](docs/figures/addon_threshold_minutes_A.png)
+
+![IUD at bariatric surgery, displacement probability](docs/figures/addon_threshold_utilization_A.png)
+
+One-way sensitivity of the add-on net value:
+
+![Tornado](docs/figures/addon_tornado.png)
+
+Prices by hospital ownership (descriptive: strict private equity comes from 1 to 3 health
+systems):
+
+![Ownership forest](docs/figures/ownership_forest.png)
+
+Medicare Advantage clusters at the Medicare rate:
+
+![Medicare Advantage map](docs/figures/supp_geo3_colonoscopy_medicare_advantage_map.png)
+
+![Medicare Advantage state ranking](docs/figures/supp_geo4_colonoscopy_ma_state_ranks.png)
+
+Giving each health system one vote per state (system-weighting sensitivity):
+
+![System weighting](docs/figures/supp_geo5_colonoscopy_system_weighting.png)
+
+</details>
+
+## Documentation
+
+| File | Contents |
+|---|---|
+| `NEWS.md` | Plain-language highlights, newest first |
+| `CHANGELOG.md` | Every change, with numbers |
+| `docs/appendix.md` | Technical appendix: sources, extraction, crosswalk, every cleaning rule and its evidence, medians, the Medicare benchmark, known data issues, validation, reproducibility |
+| `docs/trilliant_download.md` | Getting the Trilliant data onto a machine |
+| `docs/addon_methods.md` | The add-on economics model |
+| `docs/ownership_methods.md` | The hospital-ownership (private equity) analysis |
 
 ## Tests
 
@@ -100,4 +206,6 @@ Rscript tests/testthat.R
 ```
 
 All tests are offline. Fixtures are small synthetic files built from the verbatim CMS
-v3.0 template headers, and they go through the real DuckDB and jq read paths.
+v3.0 template headers, and they go through the real DuckDB and jq read paths. GitHub Actions
+(`.github/workflows/r-tests.yml`) runs the suite on every pull request and push to `main`, with
+the DuckDB CLI installed.

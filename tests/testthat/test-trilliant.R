@@ -33,10 +33,10 @@ build_trilliant_fixture <- function(path) {
             r.payer, 'PPO', NULL, NULL, r.dollar, NULL, NULL, NULL, 'fee schedule', r.median, NULL, NULL, NULL, 'Commercial'
      FROM (VALUES (1), (2)) AS h(id),
           (VALUES
-            (1, 1, 1, 'EMB',            330.0, 115.0, '58100', NULL,    NULL,  NULL,   NULL,   NULL,      'Aetna',  213.0,   NULL),
-            (2, 2, 1, 'COLONOSCOPY',    1778.0, 622.0, '45378', 'G0121', NULL, NULL,   NULL,   NULL,      'Aetna',  1289.0,  NULL),
+            (1, 1, 1, 'EMB',            330.0, 115.0, '58100', NULL,    NULL,  NULL,   NULL,   NULL,      'Aetna',  200.0,   NULL),
+            (2, 2, 1, 'COLONOSCOPY',    1700.0, 600.0, '45378', 'G0121', NULL, NULL,   NULL,   NULL,      'Aetna',  1200.0,  NULL),
             (3, 3, 1, 'CDM COLLISION',  50.0,  NULL,  NULL,    NULL,    NULL,  '58100', NULL,  NULL,      'Aetna',  10.0,    NULL),
-            (4, 4, 1, 'DRG 742 VIA OC', NULL,  NULL,  NULL,    NULL,    NULL,  NULL,   '0742', 'MS-DRG',  'Cigna',  31231.0, 30000.0),
+            (4, 4, 1, 'DRG 742 VIA OC', NULL,  NULL,  NULL,    NULL,    NULL,  NULL,   '0742', 'MS-DRG',  'Cigna',  31000.0, 30000.0),
             (5, 5, 1, 'APR DRG',        NULL,  NULL,  NULL,    NULL,    NULL,  NULL,   '742',  'APR-DRG', 'Cigna',  9999.0,  NULL),
             (6, 6, 1, 'DRG 743',        NULL,  NULL,  NULL,    NULL,    '743', NULL,   NULL,   NULL,      'United', 25173.0, NULL)
           ) AS r(n, cs, ps, descr, gross, cash, cpt, hcpcs, ms_drg, cdm, oc1, oc1t, payer, dollar, median);",
@@ -59,8 +59,8 @@ testthat::test_that("Trilliant extract gates code types, splits multi-code lines
   testthat::expect_setequal(prices$code, base::c("58100", "45378", "G0121", "742", "743", "58300"))
 
   # CDM "58100" and APR-DRG 742 were rejected; only the CPT 58100 row survives.
-  testthat::expect_equal(prices$negotiated_dollar[prices$code == "58100"], 213)
-  testthat::expect_equal(prices$negotiated_dollar[prices$code == "742"], 31231)
+  testthat::expect_equal(prices$negotiated_dollar[prices$code == "58100"], 200)
+  testthat::expect_equal(prices$negotiated_dollar[prices$code == "742"], 31000)
   testthat::expect_true(prices$type_verified[prices$code == "742"])
   testthat::expect_equal(prices$median_amount[prices$code == "742"], 30000)
 
@@ -108,7 +108,7 @@ testthat::test_that("lake layout: internal_id + run_date keys, versions hash, id
     "INSERT INTO current_charge_details
      SELECT f.id, DATE '2026-07-18', 1, r.cs, r.ps, r.descr, NULL, NULL, 'outpatient', 'facility', r.cpt, NULL, r.drg, NULL, NULL, r.payer, 'PPO', r.dollar, 'fee schedule', 'Commercial'
      FROM (VALUES ('00000000-0000-0000-0000-000000000001'::UUID), ('00000000-0000-0000-0000-000000000002'::UUID)) AS f(id),
-          (VALUES (1, 1, 'COLONOSCOPY', '45378', NULL, 'Aetna', 2431.0), (2, 1, 'DRG 742', NULL, '742', 'Cigna', 4429.0), (3, 1, 'OFFICE VISIT', '99213', NULL, 'Aetna', 100.0))
+          (VALUES (1, 1, 'COLONOSCOPY', '45378', NULL, 'Aetna', 2400.0), (2, 1, 'DRG 742', NULL, '742', 'Cigna', 4400.0), (3, 1, 'OFFICE VISIT', '99213', NULL, 'Aetna', 100.0))
           AS r(cs, ps, descr, cpt, drg, payer, dollar);"
   ), database = db)
 
@@ -119,7 +119,7 @@ testthat::test_that("lake layout: internal_id + run_date keys, versions hash, id
   testthat::expect_equal(result$n_price_rows, 2)                       # shared file read once, 99213 not in codebook
   testthat::expect_setequal(prices$code, base::c("45378", "742"))
   testthat::expect_true(base::all(prices$mrf_file_id == "hashA"))
-  testthat::expect_equal(prices$negotiated_dollar[prices$code == "45378"], 2431)
+  testthat::expect_equal(prices$negotiated_dollar[prices$code == "45378"], 2400)
   testthat::expect_equal(base::nrow(facilities), 2)
   testthat::expect_true(base::all(facilities$mrf_file_id == "hashA"))
   er <- facilities[facilities$location_name == "HCA ER Fairmont", ]

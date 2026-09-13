@@ -22,7 +22,10 @@
 #' dollars, facility fees, outpatient procedures without explicitly inpatient
 #' rows, contract median then hospital median; discounted cash per charge
 #' line). The model regresses log(hospital price) on ownership group with
-#' state fixed effects and hospital covariates, clustered by health system.
+#' state fixed effects and hospital covariates, clustered by health system,
+#' one model per PE definition. Intervals for the plotted groups come from a
+#' wild cluster restricted bootstrap (wild_cluster_bootstrap()); groups drawn
+#' from fewer than min_treated_clusters() health systems are exploratory.
 
 # ---- CMS Hospital All Owners -------------------------------------------------
 
@@ -540,8 +543,8 @@ ownership_payer_types <- function() {
 #' SQL for one facility price per CCN x code x payer type
 #'
 #' The same rules as state_medians_sql(): plausible negotiated dollars;
-#' facility fees only (billing_class not professional); outpatient concepts
-#' drop explicitly inpatient rows; a payer/plan contract's median first,
+#' facility fees only (the stored fee_type); rate_row_filter_sql() drops
+#' rows that price a different product; a payer/plan contract's median first,
 #' then the median across contracts; "self_pay_cash" is the median
 #' discounted cash price over distinct charge lines. Only CCN-matched rates
 #' count, since ownership needs a CCN.
@@ -578,8 +581,8 @@ ownership_price_sql <- function(codes = base::names(ownership_codes()),
     "         negotiated_dollar, plausible, discounted_cash, description\n",
     "  FROM v_hospital_rate\n",
     "  WHERE ccn IS NOT NULL AND state IS NOT NULL AND code IN (", sql_string_list(codes), ")\n",
-    "    AND CASE WHEN billing_class = 'professional' THEN 'professional' ELSE 'facility' END = 'facility'\n",
-    "    AND NOT (CAST(concept AS VARCHAR) IN (", sql_string_list(outpatient_concepts()), ") AND setting = 'inpatient')", exclude_sql, "\n",
+    "    AND fee_type = 'facility'\n",
+    "    AND ", rate_row_filter_sql(), exclude_sql, "\n",
     ")\n",
     base::paste(base::c(negotiated_sql, cash_sql), collapse = "  UNION ALL\n"),
     "ORDER BY code, payer_type, ccn"
@@ -674,15 +677,29 @@ ownership_model_engine <- function() {
 #' degenerate (the group's residuals sum to zero inside that cluster), so
 #' the point estimate is kept and the CI and p value are left NA.
 #'
+#' The groups in one model are mutually exclusive (a hospital is PE,
+#' CMS-flagged, distressed-fund, for-profit, government, or nonprofit), and
+#' each PE definition is its own model (ownership_models()), so the nested
+#' strict and broad PE indicators never share a regression.
+#'
+#' For the groups in `wcr_terms` with at least two clusters, a wild cluster
+#' restricted bootstrap (wild_cluster_bootstrap()) adds wcr_p_value and a
+#' test-inversion CI (wcr_ci_low, wcr_ci_high); ci_low/ci_high stay the
+#' CRV1 t intervals for comparison.
+#'
 #' @param cell Rows of [ownership_model_frame()] for one code x payer type.
 #' @param group_col Ownership-group column to use.
 #' @param engine "fixest", "sandwich", or "lm" (model-based SEs, no clustering).
+#' @param wcr_terms Groups to bootstrap (e.g. "pe").
+#' @param B Bootstrap draws.
 #' @return tibble(term, estimate, std_error, ci_low, ci_high, p_value,
-#'   pct_diff, pct_ci_low, pct_ci_high, n_group, n_group_clusters,
-#'   n_hospitals, n_clusters, se_type, covariates, note), one row per
-#'   non-reference group.
+#'   wcr_p_value, wcr_ci_low, wcr_ci_high, pct_diff, pct_ci_low,
+#'   pct_ci_high, pct_wcr_ci_low, pct_wcr_ci_high, n_group,
+#'   n_group_clusters, n_hospitals, n_clusters, se_type, covariates, note),
+#'   one row per non-reference group.
 fit_ownership_model <- function(cell, group_col = "ownership_group_cms_flag",
-                                engine = ownership_model_engine(), min_group = 3L) {
+                                engine = ownership_model_engine(), min_group = 3L,
+                                wcr_terms = base::character(), B = 9999L) {
   levels <- ownership_group_levels()
   cell <- cell |>
     dplyr::mutate(group = .data[[group_col]]) |>
@@ -705,7 +722,7 @@ fit_ownership_model <- function(cell, group_col = "ownership_group_cms_flag",
 
   empty <- tibble::tibble(
     term = levels[-1], estimate = NA_real_, std_error = NA_real_, ci_low = NA_real_, ci_high = NA_real_,
-    p_value = NA_real_, n_group = base::as.integer(n_by_group[levels[-1]]), n_group_clusters = base::unname(clusters_by_group),
+    p_value = NA_real_, wcr_p_value = NA_real_, wcr_ci_low = NA_real_, wcr_ci_high = NA_real_, n_group = base::as.integer(n_by_group[levels[-1]]), n_group_clusters = base::unname(clusters_by_group),
     group_clusters = base::unname(cluster_mix),
     n_hospitals = base::nrow(cell),
     n_clusters = n_clusters, se_type = NA_character_, covariates = base::paste(covariates, collapse = "+"),
@@ -753,49 +770,230 @@ fit_ownership_model <- function(cell, group_col = "ownership_group_cms_flag",
     std_error = base::unname(std_error),
     ci_low = estimate - t_crit * std_error,
     ci_high = estimate + t_crit * std_error,
+    wcr_p_value = NA_real_, wcr_ci_low = NA_real_, wcr_ci_high = NA_real_,
     p_value = 2 * stats::pt(-base::abs(estimate / std_error), dof),
     se_type = se_type
   )
 
+  # wild cluster restricted bootstrap for the requested groups (lm matrix;
+  # the fixest path refits it)
+  boot_terms <- base::intersect(wcr_terms, estimated$term)
+  boot_terms <- boot_terms[clusters_by_group[boot_terms] >= 2L]
+  if (base::length(boot_terms) > 0L) {
+    lm_fit <- if (engine == "fixest") stats::lm(stats::as.formula(base::paste("log_price ~", rhs, "+ state")), data = fit_cell) else fit
+    X <- stats::model.matrix(lm_fit)[, !base::is.na(stats::coef(lm_fit)), drop = FALSE]
+    if (base::nrow(X) != base::nrow(fit_cell)) {
+      base::stop("Model matrix and cell rows differ; the bootstrap needs complete rows.")
+    }
+    for (term in boot_terms) {
+      boot <- wild_cluster_bootstrap(fit_cell$log_price, X, base::paste0("group", term), fit_cell$cluster_id, B = B)
+      estimated$wcr_p_value[estimated$term == term] <- boot$p_value
+      estimated$wcr_ci_low[estimated$term == term] <- boot$ci_low
+      estimated$wcr_ci_high[estimated$term == term] <- boot$ci_high
+    }
+  }
+
   empty |>
-    dplyr::select(-"estimate", -"std_error", -"ci_low", -"ci_high", -"p_value", -"se_type") |>
+    dplyr::select(-"estimate", -"std_error", -"ci_low", -"ci_high", -"p_value", -"wcr_p_value", -"wcr_ci_low", -"wcr_ci_high", -"se_type") |>
     dplyr::left_join(estimated, by = "term") |>
     dplyr::mutate(
       n_hospitals = base::nrow(fit_cell),
       single_cluster = engine != "lm" & !base::is.na(.data$estimate) & .data$n_group_clusters < 2L,
-      dplyr::across(base::c("ci_low", "ci_high", "p_value"), function(x) dplyr::if_else(.data$single_cluster, NA_real_, x)),
+      dplyr::across(base::c("ci_low", "ci_high", "p_value", "wcr_p_value", "wcr_ci_low", "wcr_ci_high"), function(x) dplyr::if_else(.data$single_cluster, NA_real_, x)),
       note = dplyr::if_else(.data$single_cluster, "all hospitals in this group share one health system: no valid clustered CI", .data$note)
     ) |>
     dplyr::select(-"single_cluster") |>
-    dplyr::relocate("estimate", "std_error", "ci_low", "ci_high", "p_value", .after = "term") |>
+    dplyr::relocate("estimate", "std_error", "ci_low", "ci_high", "p_value", "wcr_p_value", "wcr_ci_low", "wcr_ci_high", .after = "term") |>
     add_pct_columns()
 }
 
 #' Adjusted % difference: exp(beta) - 1, with its CI
+#'
+#' The model is in log(price), so the percentage difference is
+#' 100 x (exp(beta) - 1), and each CI limit is exponentiated on its own
+#' (never 100 x beta, which is badly wrong at +100% or more). Intervals are
+#' therefore asymmetric on the % scale and symmetric on the log axis the
+#' forest plot uses.
 add_pct_columns <- function(tbl) {
-  dplyr::mutate(
+  tbl <- dplyr::mutate(
     tbl,
     pct_diff = base::exp(.data$estimate) - 1,
     pct_ci_low = base::exp(.data$ci_low) - 1,
     pct_ci_high = base::exp(.data$ci_high) - 1
   )
+  if ("wcr_ci_low" %in% base::names(tbl)) {
+    tbl <- dplyr::mutate(tbl, pct_wcr_ci_low = base::exp(.data$wcr_ci_low) - 1, pct_wcr_ci_high = base::exp(.data$wcr_ci_high) - 1)
+  }
+  tbl
+}
+
+# ---- small-cluster inference -------------------------------------------------
+
+#' Treated clusters an ownership group needs before its interval is shown
+#'
+#' Wild cluster bootstrap tests are unreliable when very few clusters are
+#' treated: the restricted version under-rejects and the unrestricted one
+#' over-rejects (MacKinnon and Webb 2017, J Appl Econometrics 32:233-254;
+#' 2018, Econometrics Journal 21:114-135). Strict PE here is essentially
+#' Lifepoint and ScionHealth, so a group drawn from fewer than 5 health
+#' systems is reported as an exploratory point estimate without an
+#' interval, whatever its number of hospitals.
+min_treated_clusters <- function() {
+  5L
+}
+
+#' Codes traditional Medicare does not pay for, so Medicare and Medicare
+#' Advantage rates for them are hospital-listed numbers, not payments
+#' (58300: OPPS status E1, PFS status N; MA follows Medicare coverage)
+medicare_noncovered_codes <- function() {
+  "58300"
+}
+
+#' Webb six-point weights, the recommended wild bootstrap weights when there
+#' are few clusters (Webb 2023, Can J Econ 56:1011-1037)
+webb_weights <- function(n) {
+  base::sample(base::c(-base::sqrt(1.5), -1, -base::sqrt(0.5), base::sqrt(0.5), 1, base::sqrt(1.5)), n, replace = TRUE)
+}
+
+#' Wild cluster restricted (WCR) bootstrap for one OLS coefficient
+#'
+#' Tests beta = beta0 with the null imposed (restricted residuals), Webb
+#' weights drawn per cluster, and CRV1 t statistics (small-sample factor
+#' G/(G-1) x (N-1)/(N-K), as sandwich::vcovCL(type = "HC1")). The CI is the
+#' set of beta0 the test does not reject, found by test inversion.
+#'
+#' Fast algorithm (Roodman, Nielsen, MacKinnon and Webb 2019, Stata J
+#' 19:4-60): with the other regressors Z partialled out (x~ = M_Z x,
+#' y~ = M_Z y), the bootstrap coefficient and every cluster's CRV1 score are
+#' linear in the weights and in beta0. Per cluster g, with a_g = x~_g'y~_g,
+#' d_g = x~_g'x~_g, Q_g = Z_g'x~_g and S_g = Z_g'y~_g, the score of draw v is
+#' P0 v - beta0 P1 v, where P0 and P1 are built once. The sums of squared
+#' scores then reduce to three numbers per draw, so each beta0 costs O(B)
+#' and the inversion grid is cheap.
+#'
+#' @param y Response vector.
+#' @param X Full-rank model matrix (with intercept and fixed-effect dummies).
+#' @param term Column of X to test.
+#' @param cluster Cluster id per row.
+#' @param B Bootstrap draws.
+#' @param level Confidence level.
+#' @param ci Also invert the test for a CI.
+#' @param seed RNG seed (set here, so each coefficient's draws are reproducible).
+#' @param null beta0 for the reported p value.
+#' @return list(estimate, se_crv1, p_value, ci_low, ci_high, B, n_clusters).
+#'   An interval side that never rejects within 60 CRV1 standard errors is
+#'   returned as -Inf / Inf (unbounded).
+wild_cluster_bootstrap <- function(y, X, term, cluster, B = 9999L, level = 0.95, ci = TRUE,
+                                   seed = 20260913L, chunk = 1000L, null = 0) {
+  j <- base::match(term, base::colnames(X))
+  if (base::is.na(j)) {
+    base::stop("Term not in the model matrix: ", term)
+  }
+  x <- X[, j]
+  Z <- X[, -j, drop = FALSE]
+  qz <- base::qr(Z)
+  x_t <- base::qr.resid(qz, x)
+  y_t <- base::qr.resid(qz, y)
+  D <- base::sum(x_t^2)
+  estimate <- base::sum(x_t * y_t) / D
+
+  g <- base::factor(cluster)
+  G <- base::nlevels(g)
+  N <- base::length(y)
+  c_adj <- (G / (G - 1)) * ((N - 1) / (N - base::ncol(X)))
+  score <- base::rowsum(x_t * (y_t - estimate * x_t), g)[, 1]
+  se_crv1 <- base::sqrt(c_adj * base::sum(score^2)) / D
+
+  a_y <- base::rowsum(x_t * y_t, g)[, 1]
+  d <- base::rowsum(x_t^2, g)[, 1]
+  Q <- base::rowsum(Z * x_t, g)
+  S <- base::rowsum(Z * y_t, g)
+  QW <- Q %*% base::chol2inv(base::chol(base::crossprod(Z)))
+
+  base::set.seed(seed)
+  av_y <- av_d <- s00 <- s01 <- s11 <- base::numeric(0)
+  for (start in base::seq(1L, B, by = chunk)) {
+    b <- base::min(chunk, B - start + 1L)
+    V <- base::matrix(webb_weights(G * b), G, b)
+    avy <- base::colSums(a_y * V)
+    avd <- base::colSums(d * V)
+    P0 <- a_y * V - QW %*% (base::crossprod(S, V)) - base::outer(d, avy) / D
+    P1 <- d * V - QW %*% (base::crossprod(Q, V)) - base::outer(d, avd) / D
+    av_y <- base::c(av_y, avy)
+    av_d <- base::c(av_d, avd)
+    s00 <- base::c(s00, base::colSums(P0^2))
+    s01 <- base::c(s01, base::colSums(P0 * P1))
+    s11 <- base::c(s11, base::colSums(P1^2))
+  }
+
+  p_at <- function(beta0) {
+    t_obs <- (estimate - beta0) / se_crv1
+    t_star <- (av_y - beta0 * av_d) / base::sqrt(c_adj * base::pmax(s00 - 2 * beta0 * s01 + beta0^2 * s11, 0))
+    base::mean(base::abs(t_star) >= base::abs(t_obs), na.rm = TRUE)
+  }
+
+  alpha <- 1 - level
+  bound <- function(direction) {
+    # walk out from the estimate until the test rejects, then bisect
+    inside <- estimate
+    for (k in base::c(base::seq(0.25, 12, by = 0.25), base::seq(13, 60, by = 1))) {
+      candidate <- estimate + direction * k * se_crv1
+      if (p_at(candidate) <= alpha) {
+        outside <- candidate
+        for (i in base::seq_len(40L)) {
+          mid <- (inside + outside) / 2
+          if (p_at(mid) > alpha) inside <- mid else outside <- mid
+        }
+        return((inside + outside) / 2)
+      }
+      inside <- candidate
+    }
+    direction * Inf
+  }
+
+  base::list(
+    estimate = estimate, se_crv1 = se_crv1, p_value = p_at(null),
+    ci_low = if (ci) bound(-1) else NA_real_, ci_high = if (ci) bound(1) else NA_real_,
+    B = B, n_clusters = G
+  )
+}
+
+#' The (definition, group) series the forest plot draws and the bootstrap
+#' covers: PE strict, PE broad, and non-PE for-profit (from the strict model)
+ownership_forest_series <- function() {
+  tibble::tribble(
+    ~definition,  ~term,               ~label,
+    "pe_strict",  "pe",                "PE, strict",
+    "pe_broad",   "pe",                "PE, broad",
+    "pe_strict",  "for_profit_non_pe", "For-profit, not PE"
+  )
 }
 
 #' Fit every code x payer type x PE definition
 #'
+#' Each definition is a separate model. The groups in `wcr_series` get a
+#' wild cluster restricted bootstrap (B draws); the others keep CRV1
+#' intervals only.
+#'
 #' @return One row per cell x non-reference group, with `low_pe_n` TRUE when
-#'   the cell has fewer than `min_pe_flag` PE hospitals and `few_pe_clusters`
-#'   TRUE when they come from fewer than `min_pe_clusters` clusters (with so
-#'   few treated clusters, cluster-robust CIs are too narrow).
+#'   the cell has fewer than `min_pe_flag` PE hospitals, `few_pe_clusters`
+#'   TRUE when they come from fewer than `min_pe_clusters` clusters,
+#'   `exploratory` TRUE for any group drawn from fewer than
+#'   min_treated_clusters() clusters (point estimate only), and
+#'   `payment_comparison` FALSE for Medicare and Medicare Advantage rates of
+#'   codes Medicare does not cover (medicare_noncovered_codes()).
 ownership_models <- function(frame, definitions = pe_definitions()$definition,
-                             engine = ownership_model_engine(), min_pe_flag = 10L, min_pe_clusters = 5L) {
+                             engine = ownership_model_engine(), min_pe_flag = 10L,
+                             min_pe_clusters = min_treated_clusters(),
+                             wcr_series = ownership_forest_series(), B = 9999L) {
   cells <- dplyr::distinct(frame, .data$code, .data$payer_type)
 
   purrr::pmap_dfr(cells, function(code, payer_type) {
     cell <- dplyr::filter(frame, .data$code == !!code, .data$payer_type == !!payer_type)
 
     purrr::map_dfr(definitions, function(definition) {
-      fit_ownership_model(cell, base::paste0("ownership_group_", definition), engine = engine) |>
+      wcr_terms <- wcr_series$term[wcr_series$definition == definition]
+      fit_ownership_model(cell, base::paste0("ownership_group_", definition), engine = engine, wcr_terms = wcr_terms, B = B) |>
         dplyr::mutate(code = code, payer_type = payer_type, definition = definition, .before = 1)
     })
   }) |>
@@ -807,6 +1005,17 @@ ownership_models <- function(frame, definitions = pe_definitions()$definition,
       few_pe_clusters = .data$n_pe_clusters < min_pe_clusters
     ) |>
     dplyr::ungroup() |>
+    dplyr::mutate(
+      exploratory = !base::is.na(.data$estimate) & .data$n_group_clusters < min_treated_clusters(),
+      payment_comparison = !(.data$code %in% medicare_noncovered_codes() & .data$payer_type %in% base::c("medicare", "medicare_advantage")),
+      note = dplyr::case_when(
+        !.data$payment_comparison ~ dplyr::if_else(base::is.na(.data$note), "", base::paste0(.data$note, "; ")) |>
+          base::paste0("not a payment comparison: Medicare does not cover this code, so Medicare Advantage rates are hospital-listed numbers"),
+        .data$exploratory ~ dplyr::if_else(base::is.na(.data$note), "", base::paste0(.data$note, "; ")) |>
+          base::paste0("exploratory: fewer than ", min_treated_clusters(), " health-system clusters in the group"),
+        TRUE ~ .data$note
+      )
+    ) |>
     dplyr::arrange(.data$definition, .data$code, .data$payer_type, base::match(.data$term, ownership_group_levels()))
 }
 
@@ -897,25 +1106,26 @@ ownership_system_ratios <- function(frame, reference_group_col = "ownership_grou
 #'
 #' Rows are codes, facets are payer types. One series per (definition,
 #' group) pair in `series`, dodged side by side; by default PE strict, PE
-#' broad, and non-PE for-profit (the distressed-fund and CMS-flag groups
-#' are too small to estimate with a CI). Hollow points mark groups with
-#' fewer than 10 hospitals in the cell.
-plot_ownership_forest <- function(results,
-                                  series = tibble::tribble(
-                                    ~definition,  ~term,               ~label,
-                                    "pe_strict",  "pe",                "PE, strict",
-                                    "pe_broad",   "pe",                "PE, broad",
-                                    "pe_strict",  "for_profit_non_pe", "For-profit, not PE"
-                                  )) {
+#' broad, and non-PE for-profit. Intervals are the 95% wild cluster
+#' restricted bootstrap CIs; exploratory groups (fewer than
+#' min_treated_clusters() health systems) are hollow points without an
+#' interval. The column at the right edge of each panel gives each group's
+#' count of health-system clusters. Rows that are not payment comparisons are left out.
+plot_ownership_forest <- function(results, series = ownership_forest_series()) {
   plot_tbl <- results |>
     dplyr::inner_join(series, by = base::c("definition", "term")) |>
-    dplyr::filter(!base::is.na(.data$estimate)) |>
+    dplyr::filter(!base::is.na(.data$estimate), .data$payment_comparison) |>
     dplyr::mutate(
       series = base::factor(.data$label, levels = series$label),
       procedure = base::factor(base::unname(ownership_codes()[.data$code]), levels = base::rev(base::unname(ownership_codes()))),
       payer = base::factor(.data$payer_type, levels = ownership_payer_types(),
                            labels = base::c("Commercial", "Medicare Advantage", "Medicaid", "Exchange", "Cash price")),
-      small = .data$n_group < 10L
+      # an unbounded bootstrap side is drawn to the panel edge
+      lo = dplyr::if_else(.data$exploratory, NA_real_, base::pmax(1 + .data$pct_wcr_ci_low, 0.15)),
+      hi = dplyr::if_else(.data$exploratory, NA_real_, base::pmin(1 + .data$pct_wcr_ci_high, 8)),
+      cluster_label = base::as.character(.data$n_group_clusters),
+      # one count column per series at the right edge (log axis)
+      label_x = base::c(9, 13, 18.5)[base::as.integer(.data$series)]
     )
 
   # reference palette slots in fixed order (blue, orange, aqua, yellow), validated
@@ -926,23 +1136,34 @@ plot_ownership_forest <- function(results,
   # labelled as % difference
   ggplot2::ggplot(plot_tbl, ggplot2::aes(x = 1 + .data$pct_diff, y = .data$procedure, color = .data$series)) +
     ggplot2::geom_vline(xintercept = 1, color = "#8a8983", linewidth = 0.4) +
-    ggplot2::geom_errorbar(ggplot2::aes(xmin = 1 + .data$pct_ci_low, xmax = 1 + .data$pct_ci_high), width = 0, linewidth = 0.6, orientation = "y", position = dodge, na.rm = TRUE) +
-    ggplot2::geom_point(ggplot2::aes(shape = .data$small), size = 2.2, stroke = 0.8, fill = "white", position = dodge) +
-    ggplot2::scale_shape_manual(values = base::c(`FALSE` = 16, `TRUE` = 21), labels = base::c(`FALSE` = "10+ hospitals in group", `TRUE` = "Fewer than 10"), name = NULL) +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$lo, xmax = .data$hi), width = 0, linewidth = 0.6, orientation = "y", position = dodge, na.rm = TRUE) +
+    ggplot2::geom_point(ggplot2::aes(shape = .data$exploratory), size = 2.2, stroke = 0.8, fill = "white", position = dodge) +
+    # health-system cluster counts, one column at the right edge of each panel
+    ggplot2::geom_text(ggplot2::aes(x = .data$label_x, label = .data$cluster_label), position = dodge, size = 2.4, hjust = 0.5, show.legend = FALSE) +
+    ggplot2::scale_shape_manual(
+      values = base::c(`FALSE` = 16, `TRUE` = 21),
+      labels = base::c(`FALSE` = base::paste0(min_treated_clusters(), "+ health systems: 95% wild cluster bootstrap CI"),
+                       `TRUE` = base::paste0("Fewer than ", min_treated_clusters(), " systems: exploratory, no interval")),
+      name = NULL
+    ) +
     ggplot2::scale_color_manual(values = colors, name = NULL, drop = FALSE) +
     ggplot2::scale_x_log10(
       breaks = base::c(0.25, 0.5, 1, 2, 4),
       labels = function(ratio) scales::label_percent(style_positive = "plus")(ratio - 1)
     ) +
+    ggplot2::coord_cartesian(xlim = base::c(0.15, 21)) +
     ggplot2::guides(color = ggplot2::guide_legend(order = 1), shape = ggplot2::guide_legend(order = 2)) +
     ggplot2::facet_wrap(~payer, ncol = 1L, scales = "free_y") +
     ggplot2::labs(
-      x = "Adjusted difference vs nonprofit hospitals (95% CI, clustered by health system)", y = NULL,
+      x = "Adjusted difference vs nonprofit hospitals, 100 x (exp(b) - 1), log axis", y = NULL,
       title = "Negotiated facility prices by hospital ownership",
       subtitle = "log(price) ~ ownership + state fixed effects + hospital type, system membership, bed size",
       caption = base::paste(
-        "PE groups come from config/pe_hospital_systems.csv; strict PE is mostly Lifepoint and ScionHealth (Apollo), so few clusters and CIs are too narrow.",
-        "No interval: every hospital in the group belongs to one system, so no clustered CI exists.",
+        "Strict and broad PE come from separate models (strict is nested in broad); \"For-profit, not PE\" is from the strict model.",
+        "Intervals: wild cluster restricted bootstrap, Webb weights, 9,999 draws, clustered by health system; limits exponentiated separately.",
+        "Right-hand columns: health-system clusters in each group, in series colours.",
+        "Strict PE is mostly Lifepoint and ScionHealth (Apollo): descriptive, not causal.",
+        "IUD insertion under Medicare Advantage is omitted: Medicare does not cover 58300, so those rates are not payments.",
         sep = "\n"
       )
     ) +

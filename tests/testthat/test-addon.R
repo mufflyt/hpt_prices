@@ -108,12 +108,49 @@ testthat::test_that("integer capacity floors and only loses a case once slack is
   testthat::expect_equal(addon_cases_per_day(480, 145, 10, 1), 3)
   testthat::expect_equal(addon_cases_per_day(480, 145, 20, 1), 2)
 
-  day <- addon_day_value(480, 55, 6, f = base::c(0, 0.5, 1), R_P = 1000, R_S = 200, C_S = 100, m = 0.5)
-  testthat::expect_equal(day$primary_cases, base::c(8, 8, 7))
-  testthat::expect_equal(day$primary_cases_lost, base::c(0, 0, 1))
-  testthat::expect_equal(day$contribution_change[2], 4 * 100) # no case lost: gain = add-ons x C_S
-  testthat::expect_equal(day$contribution_change[3], 7 * 100 - 0.5 * 1000)
-  testthat::expect_equal(day$revenue_change[3], 7 * 200 - 1000)
+  # one day, k = 0..8 of the 8 cases get a 6-minute add-on: 8 x 55 + k x 6 <= 480
+  # holds up to k = 6; at k = 7 the last case is displaced (7 x 55 + 7 x 6 = 427)
+  day <- addon_day_value(480, 55, 6, R_P = 1000, R_S = 200, C_S = 100, m = 0.5)
+  testthat::expect_equal(day$k, 0:8)
+  testthat::expect_equal(day$primary_cases, base::c(base::rep(8, 7), 7, 7))
+  testthat::expect_equal(day$primary_cases_lost, base::c(base::rep(0, 7), 1, 1))
+  testthat::expect_equal(day$addons, base::c(0:7, 7))              # 8 add-ons cannot outnumber 7 cases
+  testthat::expect_equal(day$contribution_change[day$k == 4], 4 * 100) # no case lost: gain = add-ons x C_S
+  testthat::expect_equal(day$contribution_change[day$k == 7], 7 * 100 - 0.5 * 1000)
+  testthat::expect_equal(day$revenue_change[day$k == 7], 7 * 200 - 1000)
+
+  # bariatric: 3 cases with 45 min of slack; 20-minute IUDs displace a case at the third add-on
+  bariatric <- addon_day_value(480, 145, 20, R_P = 20000, R_S = 200, C_S = -1000, m = 0.5)
+  testthat::expect_equal(bariatric$primary_cases, base::c(3, 3, 3, 2))
+  testthat::expect_equal(bariatric$addons, base::c(0, 1, 2, 2))
+  testthat::expect_equal(addon_primary_cases_with_addons(480, 145, 10, 0:3), base::c(3, 3, 3, 3))
+})
+
+testthat::test_that("the full-rate scenario is blanked where Medicare does not cover the add-on", {
+  opps <- tibble::tibble(code = base::c("58300", "J7298", "58100", "88305"), status_indicator = base::c("E1", "E1", "T", "Q1"), payment_rate = base::c(NA, NA, 206.55, 53.24))
+  noncovered <- addon_medicare_noncovered_codes(opps)
+  testthat::expect_setequal(noncovered, base::c("58300", "J7298"))
+  testthat::expect_error(addon_medicare_noncovered_codes(NULL), "OPPS")
+
+  testthat::expect_equal(
+    addon_full_rate_applies(base::c("medicare", "medicare_advantage", "medicaid", "commercial", "medicare"),
+                            base::c("58300", "58300", "58300", "58300", "58100"), noncovered),
+    base::c(FALSE, FALSE, TRUE, TRUE, TRUE)
+  )
+
+  params <- addon_test_params()
+  table <- addon_value_by_state(addon_test_medians(), params, cases = addon_test_cases(), insurance_types = base::c("commercial", "medicare")) |>
+    addon_mask_full_rate(noncovered)
+  sleeve_medicare <- table |> dplyr::filter(.data$variant == "sleeve_cpt_mirena", .data$insurance_type == "medicare")
+  testthat::expect_true(base::all(base::is.na(sleeve_medicare$net_value_listed_rate)))
+  sleeve_commercial <- table |> dplyr::filter(.data$variant == "sleeve_cpt_mirena", .data$insurance_type == "commercial")
+  testthat::expect_false(base::any(base::is.na(sleeve_commercial$net_value_listed_rate)))
+  colonoscopy_medicare <- table |> dplyr::filter(.data$variant == "diagnostic_45378", .data$insurance_type == "medicare")
+  testthat::expect_false(base::any(base::is.na(colonoscopy_medicare$net_value_listed_rate)))
+
+  # PSA-style table keyed by variant only
+  psa_like <- tibble::tibble(variant = base::c("sleeve_cpt_mirena", "diagnostic_45378"), insurance_type = "medicare", prob_worth_it_listed_rate = 0.5)
+  testthat::expect_equal(addon_mask_full_rate(psa_like, noncovered)$prob_worth_it_listed_rate, base::c(NA, 0.5))
 })
 
 testthat::test_that("rates fall back to the national median below min_hospitals", {
@@ -181,6 +218,16 @@ testthat::test_that("tornado varies each used parameter one at a time", {
   testthat::expect_true(base::all(tornado$swing > 0))
   testthat::expect_false(base::any(tornado$parameter == "or_block_minutes"))
   testthat::expect_true("R_P (hospital IQR)" %in% tornado$parameter)
+
+  labels <- addon_tornado_labels(tornado, params)
+  testthat::expect_equal(base::length(labels), base::nrow(tornado))
+  testthat::expect_false(base::any(base::grepl("_", labels)))              # no code names left
+  added <- labels[tornado$parameter == "combined_emb_added_minutes"]
+  testthat::expect_equal(added, "Added room time for the EMB (1 min to 12 min)")
+  testthat::expect_equal(labels[tornado$variant == "sleeve_cpt_mirena" & tornado$parameter == "utilization_A"],
+                         "Chance added minutes displace a bariatric case (0% to 75%)")
+  testthat::expect_match(labels[tornado$variant == "diagnostic_45378" & tornado$parameter == "R_P (hospital IQR)"],
+                         "^Colonoscopy negotiated rate \\(\\$1,600 to \\$2,400, hospital IQR\\)$")
 })
 
 testthat::test_that("PSA draws respect their bounds and are reproducible", {

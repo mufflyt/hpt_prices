@@ -13,11 +13,16 @@
 #'
 #' Rules applied (all documented in the output's `rule` attribute):
 #' - negotiated rates: only rows flagged `plausible` at load (R/duckdb_store.R);
-#' - facility and professional fees are reported separately (`fee_type`);
-#'   "unknown"/"both" billing class counts as facility, since hospital MRFs
-#'   list facility charges unless they say otherwise;
+#' - facility and professional fees are reported separately (`fee_type`,
+#'   set at load: explicit billing class, else inferred from gross where the
+#'   code's facility and professional gross charges separate, else facility;
+#'   inferred-professional rows are left out of both; see
+#'   case_line_multiple() in R/duckdb_store.R);
 #' - outpatient procedures (colonoscopy, EMB, IUD, pathology, D&C, hysteroscopy) exclude rows
-#'   whose setting is explicitly inpatient;
+#'   whose setting is explicitly inpatient and operating-room case lines
+#'   (`case_line`, see case_line_multiple() in R/duckdb_store.R); office
+#'   procedures (EMB, IUD insertion) also exclude case-rate and per-diem rows
+#'   (rate_row_filter_sql());
 #' - a national row (state = "US") uses the same two stages over all units.
 
 outpatient_concepts <- function() {
@@ -27,8 +32,40 @@ outpatient_concepts <- function() {
   )
 }
 
+#' Office procedures: done in a clinic or procedure room as a single service,
+#' but also listed by some hospitals as the primary procedure of an
+#' operating-room case
+office_procedure_concepts <- function() {
+  base::c("emb", "iud_insertion")
+}
+
+#' SQL predicate that keeps a rate row unless it prices a different product
+#' than the procedure itself. Shared by the state medians, the payer ratios,
+#' and the ownership prices.
+#' - any code: drop rows whose fee type was inferred professional from a
+#'   blank billing class (out of facility fees, and too uncertain to count as
+#'   professional fees; see case_line_multiple() in R/duckdb_store.R);
+#' - outpatient procedures: drop rows on an inpatient line or an
+#'   operating-room case line (`case_line`);
+#' - office procedures: also drop package rates. CMS defines a case rate as
+#'   "a flat rate for a package of items and services triggered by a primary
+#'   procedure" (per diem likewise prices a stay), so a case rate for 58300 or
+#'   58100 prices the surgical case, not the insertion or the biopsy. In the
+#'   2026-07-21 snapshot, commercial 58300 case-rate rows ran about ten times
+#'   the fee-schedule and percent-of-charges rows. Colonoscopy is not an
+#'   office procedure: its case rate is the endoscopy encounter itself, so it
+#'   is kept.
+rate_row_filter_sql <- function() {
+  base::paste0(
+    "NOT (fee_type_inferred AND fee_type = 'professional') ",
+    "AND NOT (CAST(concept AS VARCHAR) IN (", sql_string_list(outpatient_concepts()), ") ",
+    "AND (setting = 'inpatient' OR case_line)) ",
+    "AND NOT (CAST(concept AS VARCHAR) IN (", sql_string_list(office_procedure_concepts()), ") ",
+    "AND methodology IN ('case rate', 'per diem'))"
+  )
+}
+
 state_medians_sql <- function(exclude_file_ids = NULL) {
-  outpatient <- sql_string_list(outpatient_concepts())
   exclude_sql <- if (base::length(exclude_file_ids) > 0L) {
     base::paste0(" AND mrf_file_id NOT IN (", sql_string_list(exclude_file_ids), ")")
   } else {
@@ -38,10 +75,10 @@ state_medians_sql <- function(exclude_file_ids = NULL) {
   base::paste0(
     "WITH base AS (\n",
     "  SELECT unit_id, state, CAST(concept AS VARCHAR) AS concept, code, anchor,\n",
-    "         CASE WHEN billing_class = 'professional' THEN 'professional' ELSE 'facility' END AS fee_type,\n",
+    "         CAST(fee_type AS VARCHAR) AS fee_type,\n",
     "         CAST(payer_type AS VARCHAR) AS payer_type, payer_name, plan_name, negotiated_dollar, plausible, discounted_cash, gross, description\n",
     "  FROM v_hospital_rate\n",
-    "  WHERE state IS NOT NULL AND NOT (CAST(concept AS VARCHAR) IN (", outpatient, ") AND setting = 'inpatient')", exclude_sql, "\n",
+    "  WHERE state IS NOT NULL AND ", rate_row_filter_sql(), exclude_sql, "\n",
     "),\n",
     # a payer/plan contract counts once per hospital, however many charge
     # lines repeat it (HCA lists MS-DRG 742 on 69 lines)
@@ -105,7 +142,7 @@ state_median_headline <- function(medians, min_hospitals = 3L) {
     "45378" = "colonoscopy_45378", "58100" = "emb_58100", "58300" = "iud_insertion_58300",
     "43775" = "sleeve_gastrectomy_43775", "43644" = "gastric_bypass_43644",
     # the inpatient bariatric facility payment; CPT-coded bariatric lines are
-    # usually partial (national Medicare: 43775 $1,062 vs MS-DRG 621 $12,907)
+    # usually partial (a small fraction of the national Medicare DRG 621 rate)
     "621" = "bariatric_ms_drg_621"
   )
 
