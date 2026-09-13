@@ -408,8 +408,95 @@ testthat::test_that("the forest plot builds from model results", {
       ownership_group_pe_strict = dplyr::if_else(.data$ownership_group_cms_flag == "government", "distressed_fund", .data$ownership_group_cms_flag),
       ownership_group_pe_broad = .data$ownership_group_cms_flag
     )
-  results <- ownership_models(frame, definitions = base::c("pe_strict", "pe_broad"), engine = "sandwich")
+  results <- ownership_models(frame, definitions = base::c("pe_strict", "pe_broad"), engine = "sandwich", B = 199L)
   plot <- plot_ownership_forest(results)
   testthat::expect_s3_class(plot, "ggplot")
   testthat::expect_silent(ggplot2::ggplot_build(plot))
+})
+
+#' Clustered data with a treatment assigned to whole clusters
+wcr_data <- function(G = 40L, n = 400L, share_treated = 1 / 3, effect = 0.2, seed = 1L) {
+  base::set.seed(seed)
+  cl <- base::sample(G, n, replace = TRUE)
+  st <- base::sample(letters[1:5], n, replace = TRUE)
+  treat <- base::as.numeric(cl <= base::round(G * share_treated))
+  y <- effect * treat + stats::rnorm(G)[cl] * 0.3 + stats::rnorm(n) * 0.5 + (st == "a") * 0.4
+  base::list(y = y, cl = cl, X = stats::model.matrix(~ treat + st), treat = treat, st = st)
+}
+
+testthat::test_that("the wild cluster bootstrap matches sandwich CRV1 and brute-force refits", {
+  d <- wcr_data()
+  fit <- stats::lm(d$y ~ d$treat + d$st)
+  v <- sandwich::vcovCL(fit, cluster = d$cl, type = "HC1")
+  boot <- wild_cluster_bootstrap(d$y, d$X, "treat", d$cl, B = 199L, ci = FALSE)
+  testthat::expect_equal(boot$estimate, base::unname(stats::coef(fit)[2]))
+  testthat::expect_equal(boot$se_crv1, base::sqrt(v[2, 2]))
+
+  # the fast cluster-sum algebra gives the same p value as refitting every draw
+  G <- 25L
+  small <- wcr_data(G = G, n = 200L, share_treated = 0.25, effect = 0.1, seed = 3L)
+  B <- 199L
+  beta0 <- 0.3
+  fast <- wild_cluster_bootstrap(small$y, small$X, "treat", small$cl, B = B, ci = FALSE, seed = 11L, null = beta0)
+  base::set.seed(11L)
+  V <- base::matrix(webb_weights(G * B), G, B)
+  g <- base::factor(small$cl)
+  X <- small$X
+  restricted <- stats::lm.fit(X[, -2], small$y - beta0 * X[, 2])
+  full <- stats::lm.fit(X, small$y)
+  c_adj <- (G / (G - 1)) * ((base::length(small$y) - 1) / (base::length(small$y) - base::ncol(X)))
+  crv1 <- function(res) {
+    bread <- base::solve(base::crossprod(X))
+    base::sqrt(c_adj * (bread %*% base::crossprod(base::rowsum(X * res, g)) %*% bread)[2, 2])
+  }
+  t_obs <- (full$coefficients[2] - beta0) / crv1(full$residuals)
+  t_star <- base::vapply(base::seq_len(B), function(b) {
+    refit <- stats::lm.fit(X, beta0 * X[, 2] + restricted$fitted.values + restricted$residuals * V[base::as.integer(g), b])
+    (refit$coefficients[2] - beta0) / crv1(refit$residuals)
+  }, base::numeric(1))
+  testthat::expect_equal(fast$p_value, base::mean(base::abs(t_star) >= base::abs(t_obs)))
+})
+
+testthat::test_that("with many clusters the bootstrap CI is close to the CRV1 CI, and the test has about nominal size", {
+  d <- wcr_data(G = 60L, n = 600L, share_treated = 0.5)
+  fit <- stats::lm(d$y ~ d$treat + d$st)
+  se <- base::sqrt(sandwich::vcovCL(fit, cluster = d$cl, type = "HC1")[2, 2])
+  crv1_width <- 2 * stats::qt(0.975, 59) * se
+  boot <- wild_cluster_bootstrap(d$y, d$X, "treat", d$cl, B = 999L)
+  testthat::expect_lt(base::abs((boot$ci_high - boot$ci_low) / crv1_width - 1), 0.15)
+  testthat::expect_true(boot$ci_low < stats::coef(fit)[2] && boot$ci_high > stats::coef(fit)[2])
+
+  # size under a true null: 200 data sets, 5% test
+  rejections <- base::vapply(base::seq_len(200L), function(i) {
+    null_data <- wcr_data(G = 30L, n = 240L, share_treated = 0.5, effect = 0, seed = 100L + i)
+    wild_cluster_bootstrap(null_data$y, null_data$X, "treat", null_data$cl, B = 199L, ci = FALSE, seed = i)$p_value <= 0.05
+  }, base::logical(1))
+  testthat::expect_gt(base::mean(rejections), 0.01)
+  testthat::expect_lt(base::mean(rejections), 0.10)
+})
+
+testthat::test_that("few treated clusters are exploratory and non-covered Medicare Advantage rows are not payment comparisons", {
+  series <- tibble::tibble(definition = "cms_flag", term = "pe", label = "PE")
+  many <- ownership_models(synthetic_frame(), definitions = "cms_flag", engine = "sandwich", wcr_series = series, B = 199L)
+  pe <- dplyr::filter(many, .data$term == "pe")
+  testthat::expect_equal(pe$n_group_clusters, 6L)                 # 12 PE hospitals, two per system
+  testthat::expect_false(pe$exploratory)
+  testthat::expect_false(base::is.na(pe$wcr_ci_low))
+  testthat::expect_true(pe$pct_wcr_ci_low < 0.3 && pe$pct_wcr_ci_high > 0.3)
+  testthat::expect_equal(pe$pct_wcr_ci_low, base::exp(pe$wcr_ci_low) - 1)
+
+  few <- ownership_models(synthetic_frame(n_pe = 5L), definitions = "cms_flag", engine = "sandwich", wcr_series = series, B = 199L)
+  pe_few <- dplyr::filter(few, .data$term == "pe")
+  testthat::expect_true(pe_few$exploratory)                        # 3 systems < min_treated_clusters()
+  testthat::expect_match(pe_few$note, "exploratory")
+
+  iud_ma <- synthetic_frame() |> dplyr::mutate(code = "58300", payer_type = "medicare_advantage")
+  flagged <- ownership_models(iud_ma, definitions = "cms_flag", engine = "sandwich", wcr_series = series, B = 199L)
+  testthat::expect_false(base::any(flagged$payment_comparison))
+  testthat::expect_match(flagged$note[flagged$term == "pe"], "not a payment comparison")
+
+  both <- dplyr::bind_rows(many, flagged) |>
+    dplyr::mutate(definition = "pe_strict")
+  plot <- plot_ownership_forest(both, series = tibble::tibble(definition = "pe_strict", term = "pe", label = "PE"))
+  testthat::expect_true(base::all(plot$data$code == "45378"))
 })

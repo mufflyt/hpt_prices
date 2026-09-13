@@ -53,6 +53,7 @@ source_files <- c(
   "payer_ratios.R",
   "addon_economics.R",
   "validation.R",
+  "geo_figures.R",
   "summaries.R",
   "pipeline.R"
 )

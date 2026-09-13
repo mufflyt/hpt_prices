@@ -9,18 +9,20 @@ and the sourced system list `config/pe_hospital_systems.csv`. Outputs go to
 
 **Short answer.** PE here means hospitals whose system is controlled by a PE fund as of
 July 2026. That is almost entirely Lifepoint Health and ScionHealth, both owned by Apollo
-funds. These hospitals post higher commercial prices than nonprofit hospitals in the same
-state for office-type gynecologic and endoscopic procedures:
-- colonoscopy (45378): +34%;
-- endometrial biopsy (58100): +61%;
-- IUD insertion (58300): +38%;
-- hysteroscopy (58558): +19%.
+funds. Adjusted for state and hospital covariates, these hospitals post higher commercial
+prices than nonprofit hospitals for office-type gynecologic and endoscopic procedures:
+- colonoscopy (45378): +28%;
+- endometrial biopsy (58100): +54%;
+- IUD insertion (58300): +149%;
+- hysteroscopy (58558): +14%.
 
-They post about the same price for D&C (58120), and lower prices for inpatient bariatric
-surgery (MS-DRG 621 -22%, sleeve 43775 -44%).
+They post about the same price for D&C (58120, -3%), and lower prices for inpatient
+bariatric surgery (MS-DRG 621 -22%, sleeve 43775 -48%).
 
-The pooled PE group rests on 3 health systems, so the confidence intervals understate the
-real uncertainty, and the estimates describe Apollo's hospitals more than PE in general.
+Strict PE rests on 2 or 3 health systems in every commercial cell, so no interval is
+valid: these are exploratory point estimates that describe Apollo's hospitals, not PE in
+general. Under the broad definition (4 to 7 systems), only commercial sleeve gastrectomy
+is lower by the wild cluster bootstrap (-53%, p=0.01).
 Hospitals held by creditor or distressed-debt funds (Quorum, Pipeline), which CMS's own
 PE flag picks up, are a separate group and have too few prices to estimate.
 
@@ -34,7 +36,7 @@ PE flag picks up, are a separate group and have too few prices to estimate.
 | CMS Hospital General Information (roster, `dim_hospital`) | downloaded 2026-09-12 | hospital type, roster ownership |
 | AHRQ Compendium of US Health Systems, 2023 hospital linkage | 2023 | health system (cluster), beds |
 | Kim et al. (2026) PE hospital deal list | GitHub `sungilkim94/Kim-PE-Data` commit `d1796fd`, downloaded 2026-09-13 to `reference/kim_pe_deals/` with provenance | cross-check only |
-| `hpt.duckdb` | final build of 2026-09-13 05:31: 7,753,542 rates, 3,924 files, 3,303 CCNs, with 58120 and 58558 | negotiated rates |
+| `hpt.duckdb` | final build of 2026-09-13 (after the fee-type, case-line, and file-state validation fixes): 8,301,406 rates, 4,003 files, 3,362 CCNs | negotiated rates |
 
 ### Public PE-hospital datasets checked
 
@@ -217,11 +219,13 @@ field.
 `ownership_price_sql()` applies the rules of `R/state_medians.R`, one facility price per
 CCN x code x payer type:
 - plausible negotiated dollars only;
-- facility fees only;
-- outpatient concepts (`outpatient_concepts()`) drop explicitly inpatient rows;
+- facility fees only (the stored `fee_type`; blank-billing-class rows at a professional-level
+  gross are left out);
+- `rate_row_filter_sql()`: outpatient procedures drop explicitly inpatient rows and
+  operating-room case lines, and EMB and IUD insertion drop case-rate and per-diem rows;
 - median within each payer/plan contract, then median across the hospital's contracts;
 - cash: median discounted cash price over distinct charge lines;
-- files in `output/median_excluded_file_ids.csv` (42 at the final run) are excluded;
+- files in `output/median_excluded_file_ids.csv` (45 at the final run) are excluded;
 - CCN-matched rates only.
 
 A test rebuilds `compute_state_medians()` exactly from these hospital prices.
@@ -239,56 +243,94 @@ For each code x payer type x definition:
     log(price) ~ ownership group + state FE + hospital type + system member + bed band
 
 - **Reference group:** nonprofit. Bed band comes from AHRQ CHSP 2023. The adjusted
-  difference is exp(beta) - 1.
-- **Standard errors:** cluster-robust (sandwich `vcovCL`, HC1) with t intervals on G - 1
-  degrees of freedom. `fixest` is not installed, so the lm + sandwich path runs.
+  difference is 100 x (exp(beta) - 1), and each CI limit is exponentiated on its own, so
+  intervals are asymmetric in % and symmetric on the forest plot's log axis (checked:
+  `add_pct_columns()` never uses 100 x beta).
+- **One model per PE definition.** Groups within a model are mutually exclusive (PE,
+  CMS-flagged, distressed fund, for-profit, government, nonprofit). Strict PE is nested in
+  broad PE, so the two are never in one regression; "For-profit, not PE" in the forest plot
+  comes from the strict model.
+- **Standard errors:** cluster-robust CRV1 (sandwich `vcovCL`, HC1) with t intervals on
+  G - 1 degrees of freedom, kept in the results CSV (`ci_low`, `ci_high`, `p_value`).
+  `fixest` and `fwildclusterboot` are not installed, so the lm + sandwich path runs.
+- **Small-cluster inference:** for the plotted groups (PE strict, PE broad, for-profit not
+  PE), a wild cluster restricted (WCR) bootstrap: null imposed, Webb six-point weights
+  drawn per health system, 9,999 draws, seeded per coefficient, CRV1 t statistics. The CI
+  is the set of null values the bootstrap test does not reject (test inversion);
+  `wcr_p_value`, `wcr_ci_low`, `wcr_ci_high`. `wild_cluster_bootstrap()` uses the fast
+  cluster-sum algebra of Roodman, Nielsen, MacKinnon and Webb (2019): after partialling
+  out the other regressors, every cluster's bootstrap score is linear in the weights and
+  in the null value, so each point of the inversion costs O(B). Tests check it against
+  `sandwich` (identical CRV1 SE), against brute-force refits (identical p value), and
+  for size (5% test rejects 1% to 10% of 200 null data sets).
+- **Exploratory estimates:** a group drawn from fewer than 5 health systems
+  (`min_treated_clusters()`) is `exploratory`: point estimate only, no interval in the
+  plot. With so few treated clusters even the wild bootstrap is unreliable (the restricted
+  version under-rejects, the unrestricted over-rejects; MacKinnon and Webb 2017, 2018).
+- **Not a payment comparison:** Medicare does not cover IUD insertion (58300: OPPS E1,
+  PFS N), and Medicare Advantage follows Medicare coverage, so 58300 x Medicare Advantage
+  estimates are flagged `payment_comparison = FALSE` and left out of the plot.
 - **Clusters:** the listed PE system for hospitals in one, otherwise the CHSP system,
   otherwise the hospital. Clustering on the current owner puts Lifepoint's joint-venture
   hospitals in one cluster even when CHSP lists them under the partner.
 - **Groups not estimated:** any group with fewer than 3 hospitals.
-- **Flags:** `low_pe_n` (fewer than 10 PE hospitals) and `few_pe_clusters` (fewer than 5
-  PE clusters).
+- **Flags:** `low_pe_n` (fewer than 10 PE hospitals), `few_pe_clusters` (fewer than 5
+  PE clusters), `exploratory`, `payment_comparison`. Every row reports `n_group` and
+  `n_group_clusters` (hospitals and health systems in the group) and `n_hospitals` and
+  `n_clusters` (the whole cell).
 - **Single-system groups:** when a group sits in one cluster the point estimate is kept
   and the CI is NA.
 - **`group_clusters`** lists the largest clusters in each group, so you can see what
   drives each estimate.
 
-## Results (final run of 2026-09-13 on the 05:31 `hpt.duckdb`)
+## Results (final run of 2026-09-13 on the final `hpt.duckdb`)
 
-Adjusted % difference vs nonprofit hospitals in the same state (95% CI); n = group
-hospitals; sys = clusters (health systems) among them. **With 3 to 8 PE clusters,
-cluster-robust CIs are too narrow; read them as rough.** In `pe_strict`, Lifepoint supplies
-69% to 82% of PE hospitals in the colonoscopy, IUD, D&C, and hysteroscopy commercial cells.
-ScionHealth supplies 6 of the 8 in commercial EMB and 5 of 13 for sleeve. OrthoNebraska
-adds one hospital in most cells. "NA" means one cluster, so no CI.
+Adjusted % difference vs nonprofit hospitals in the same state, with the 95% wild
+cluster restricted bootstrap CI and p value; n = group hospitals; sys = health-system
+clusters among them. Exploratory = fewer than 5 systems, no interval.
 
-| Code | Payer | PE strict | PE broad | PE broad incl. creditor | CMS PE flag group | For-profit, not PE |
-|---|---|---|---|---|---|---|
-| 45378 colonoscopy | commercial | +34% (+14% to +58%); n=39, 3 sys | +18% (-7% to +48%); n=67, 7 sys | +12% (-15% to +46%); n=71, 8 sys | -50% (NA); n=3, 1 sys | +8% (-7% to +26%); n=377 |
-| 45378 colonoscopy | Medicare Adv. | -11% (-32% to +17%); n=15, 3 sys | +17% (-14% to +59%); n=36, 7 sys | +15% (-13% to +52%); n=40, 8 sys | +6% (NA); n=3 | +23% (+3% to +47%); n=289 |
-| 45378 colonoscopy | Medicaid | +15% (-11% to +48%); n=11, 2 sys | +33% (+6% to +66%); n=24, 5 sys | +34% (+8% to +67%); n=28, 6 sys | +44% (NA); n=3 | -6% (-26% to +20%); n=213 |
-| 45378 colonoscopy | exchange | +15% (-1% to +33%); n=19, 3 sys | -5% (-25% to +19%); n=32, 6 sys | -10% (-29% to +13%); n=36, 7 sys | -43% (NA); n=3 | +20% (+3% to +39%); n=266 |
-| 58100 EMB | commercial | +61% (+36% to +90%); n=8, 3 sys | +13% (-25% to +71%); n=16, 6 sys | -8% (-45% to +53%); n=20, 7 sys | -60% (NA); n=3 | +62% (+10% to +140%); n=281 |
-| 58100 EMB | Medicaid | not estimated (n=2) | +261% (+135% to +454%); n=5, 5 sys | +145% (+37% to +337%); n=9, 6 sys | +52% (NA); n=3 | -6% (-22% to +13%); n=142 |
-| 58300 IUD insertion | commercial | +38% (-5% to +99%); n=26, 3 sys | +31% (-4% to +80%); n=31, 5 sys | +5% (-38% to +77%); n=35, 6 sys | -81% (NA); n=3 | +89% (+37% to +162%); n=289 |
-| 58300 IUD insertion | Medicaid | +269% (+150% to +444%); n=6, 2 sys | +293% (+171% to +471%); n=8, 4 sys | +122% (-11% to +450%); n=12, 5 sys | -26% (NA); n=3 | +36% (+2% to +83%); n=145 |
-| 58120 D&C | commercial | -2% (-19% to +19%); n=25, 3 sys | -6% (-22% to +13%); n=29, 5 sys | -7% (-22% to +10%); n=33, 6 sys | -18% (NA); n=3 | +2% (-13% to +20%); n=282 |
-| 58120 D&C | Medicaid | +17% (-44% to +147%); n=3, 2 sys | +49% (-17% to +167%); n=5, 4 sys | +87% (-2% to +256%); n=9, 5 sys | +150% (NA); n=3 | -30% (-47% to -8%); n=151 |
-| 58558 hysteroscopy | commercial | +19% (+5% to +36%); n=37, 3 sys | +12% (-6% to +34%); n=44, 5 sys | +9% (-10% to +32%); n=48, 6 sys | -19% (NA); n=3 | +8% (-10% to +28%); n=311 |
-| 58558 hysteroscopy | Medicaid | -22% (-45% to +11%); n=9, 2 sys | -16% (-42% to +22%); n=12, 4 sys | +19% (-45% to +160%); n=16, 5 sys | +225% (NA); n=3 | -31% (-48% to -9%); n=174 |
-| MS-DRG 621 | commercial | -22% (-30% to -12%); n=18, 3 sys | -27% (-37% to -15%); n=30, 5 sys | -26% (-36% to -14%); n=35, 7 sys | -10% (NA); n=3 | -12% (-20% to -4%); n=350 |
-| MS-DRG 621 | Medicaid | +49% (NA); n=4, 1 sys | +43% (+13% to +81%); n=8, 3 sys | +54% (+11% to +114%); n=13, 5 sys | +95% (NA); n=3 | +6% (-17% to +36%); n=165 |
-| 43775 sleeve | commercial | -44% (-62% to -19%); n=13, 3 sys | -51% (-65% to -31%); n=20, 6 sys | -49% (-62% to -33%); n=24, 7 sys | -43% (NA); n=3 | -13% (-31% to +10%); n=253 |
+| Code | Payer | PE strict | PE broad | For-profit, not PE |
+|---|---|---|---|---|
+| 45378 colonoscopy | commercial | +28%, exploratory; n=39, 3 sys | +14% (-37% to +42%; p=0.54); n=67, 7 sys | +3% (-19% to +20%; p=0.73); n=363, 99 sys |
+| 45378 colonoscopy | medicaid | +10%, exploratory; n=11, 2 sys | +28% (-35% to +115%; p=0.17); n=24, 5 sys | -10% (-33% to +19%; p=0.47); n=204, 57 sys |
+| 58100 EMB | commercial | +54%, exploratory; n=7, 2 sys | +16% (-56% to +93%; p=0.71); n=15, 5 sys | +66% (-24% to +188%; p=0.49); n=267, 78 sys |
+| 58100 EMB | medicaid | not estimated (n=1) | +120%, exploratory; n=4, 4 sys | -2% (-19% to +20%; p=0.84); n=126, 43 sys |
+| 58300 IUD insertion | commercial | +149%, exploratory; n=9, 2 sys | +95%, exploratory; n=14, 4 sys | +80% (-16% to +192%; p=0.26); n=245, 74 sys |
+| 58300 IUD insertion | medicaid | not estimated (n=1) | +87%, exploratory; n=3, 3 sys | +23% (-26% to +76%; p=0.64); n=113, 43 sys |
+| 58120 D&C | commercial | -3%, exploratory; n=25, 3 sys | -6% (-41% to +53%; p=0.54); n=29, 5 sys | -5% (-29% to +13%; p=0.64); n=268, 74 sys |
+| 58120 D&C | medicaid | -11%, exploratory; n=3, 2 sys | +20%, exploratory; n=5, 4 sys | -34% (-53% to -5%; p=0.03); n=140, 43 sys |
+| 58558 hysteroscopy | commercial | +14%, exploratory; n=37, 3 sys | +7% (-36% to +152%; p=0.66); n=44, 5 sys | -0% (-26% to +19%; p=1.00); n=302, 81 sys |
+| 58558 hysteroscopy | medicaid | -28%, exploratory; n=9, 2 sys | -23%, exploratory; n=12, 4 sys | -33% (-57% to -5%; p=0.03); n=168, 47 sys |
+| MS-DRG 621 | commercial | -22%, exploratory; n=18, 3 sys | -27% (-53% to +26%; p=0.08); n=30, 5 sys | -12% (-20% to +1%; p=0.06); n=350, 90 sys |
+| MS-DRG 621 | medicaid | +49%, exploratory; n=4, 1 sys | +43%, exploratory; n=8, 3 sys | +6% (-27% to +54%; p=0.70); n=165, 46 sys |
+| 43775 sleeve | commercial | -48%, exploratory; n=12, 3 sys | -53% (-73% to -26%; p=0.01); n=19, 6 sys | -14% (-40% to +9%; p=0.26); n=248, 55 sys |
+| 43775 sleeve | medicaid | not estimated (n=2) | +88%, exploratory; n=3, 3 sys | -32% (-59% to +33%; p=0.31); n=80, 23 sys |
+
+What the bootstrap changes:
+- **Strict PE is exploratory in every cell** (1 to 3 systems: Lifepoint and ScionHealth
+  supply nearly all hospitals). Its CRV1 intervals looked significant for colonoscopy,
+  EMB, IUD insertion, hysteroscopy, sleeve, and MS-DRG 621 (commercial); none of that survives
+  as inference. The directions are descriptive.
+- **Broad PE (4 to 7 systems in commercial cells):** only commercial sleeve gastrectomy
+  (-53%, p=0.01) stays below 0.05; MS-DRG 621 is -27% (p=0.08). Across payers, CRV1 had 4
+  significant non-exploratory broad-PE cells, the bootstrap 1.
+- **For-profit, not PE** has 14 to 99 systems, but HCA is 122 to 123 of its hospitals in
+  every commercial cell, so cluster sizes are very unequal and the bootstrap widens
+  intervals where HCA drives the estimate: commercial IUD insertion +80% goes from
+  p=0.01 (CRV1) to p=0.26, EMB +66% from 0.05 to 0.49. Medicaid D&C (-34%) and
+  hysteroscopy (-33%) stay significant (p=0.03).
+- Across the 93 plotted estimates, 43 are exploratory. Of the other 50, 4 are significant at
+  0.05 by the bootstrap and 12 by CRV1.
 
 The distressed-fund group (Quorum and other GoldenTree / Davidson Kempner hospitals, plus
-Coast Plaza) has only 1 to 2 priced hospitals per cell and is not estimated. Forrest City
+Coast Plaza) has at most 2 priced hospitals per cell and is not estimated. Forrest City
 and Mesa View publish through apps.para-hcfs.com script URLs, and their own files list
 only 88305 among our codes. The previous build cross-linked other hospitals' para-hcfs
 files to them; the final build does not.
 Medicare Advantage, exchange, and cash cells are in `ownership_model_results.csv`.
 Strict-PE cash prices exist only for Lifepoint hospitals (one cluster), so their
-estimates have no CI. They are large: colonoscopy +75%, IUD insertion +566%, D&C +116%,
-hysteroscopy +100%.
+estimates have no CI. They are large: colonoscopy +42% (35 hospitals), IUD insertion +539%
+(4), D&C +86% (18), hysteroscopy +51% (30).
 
 ### Robustness
 
@@ -297,14 +339,23 @@ states of (median PE price / median nonprofit price - 1), over states with both 
 
 | Code | Payer | PE strict | PE broad |
 |---|---|---|---|
-| 45378 colonoscopy | commercial | +26%, 20 states, higher in 65% | -6%, 25 states, 48% |
-| 45378 colonoscopy | Medicaid | +3%, 8 states, 50% | +12%, 14 states, 57% |
-| 58100 EMB | commercial | +81%, 7 states, 86% | +18%, 10 states, 60% |
-| 58300 IUD insertion | commercial | +63%, 17 states, 71% | +45%, 20 states, 65% |
-| 58120 D&C | commercial | -21%, 16 states, 38% | -14%, 18 states, 39% |
-| 58558 hysteroscopy | commercial | +8%, 20 states, 55% | +13%, 23 states, 61% |
+| 45378 colonoscopy | commercial | +24%, 20 states, higher in 65% | -7%, 25 states, 48% |
+| 45378 colonoscopy | Medicaid | +5%, 8 states, 50% | +14%, 14 states, 57% |
+| 58100 EMB | commercial | +39%, 6 states, 67% | +18%, 9 states, 56% |
+| 58100 EMB | Medicaid | +26%, 1 state, 100% | +106%, 4 states, 100% |
+| 58300 IUD insertion | commercial | +578%, 7 states, 86% | +345%, 10 states, 70% |
+| 58300 IUD insertion | Medicaid | -23%, 1 state, 0% | -5%, 3 states, 33% |
+| 58120 D&C | commercial | -21%, 16 states, 38% | -16%, 18 states, 39% |
+| 58120 D&C | Medicaid | -21%, 3 states, 33% | +20%, 5 states, 60% |
+| 58558 hysteroscopy | commercial | 0%, 20 states, 50% | +1%, 23 states, 52% |
+| 58558 hysteroscopy | Medicaid | -50%, 7 states, 14% | -48%, 10 states, 20% |
 | MS-DRG 621 | commercial | -24%, 18 states, 17% | -22%, 25 states, 20% |
-| 43775 sleeve | commercial | -31%, 11 states, 36% | -43%, 12 states, 33% |
+| MS-DRG 621 | Medicaid | +42%, 4 states, 75% | +30%, 8 states, 62% |
+| 43775 sleeve | commercial | -25%, 10 states, 40% | -39%, 11 states, 36% |
+| 43775 sleeve | Medicaid | +322%, 2 states, 100% | +321%, 3 states, 67% |
+
+The commercial IUD comparison rests on few states (7 strict, 10 broad) and few PE
+hospitals (9 strict), so its size is not robust.
 
 **By system** (`pe_system_price_ratios.csv`): each hospital's price divided by the
 median nonprofit price in its state; median [IQR] across the system's hospitals.
@@ -312,30 +363,32 @@ Hospitals follow their owners in the CMS file, so the 8 community hospitals that
 from ScionHealth to Lifepoint on 2026-06-02 still count as ScionHealth; both are Apollo.
 Lifepoint drives the strict result, and the ambiguous systems pull the other way.
 - **Commercial colonoscopy:**
-  - Lifepoint +62% [-16%, +144%] (n=32);
-  - ScionHealth +10% (n=6);
+  - Lifepoint +44% [-19%, +105%] (n=32);
   - Ardent +1% (n=18);
-  - Surgery Partners -30% (n=6);
-  - Legent -21% (n=3);
-  - Pipeline -59% (n=4, one shared file).
+  - ScionHealth +9% (n=6);
+  - Surgery Partners -31% (n=6);
+  - Pipeline -59% (n=4, one shared file);
+  - Legent -21% (n=3).
 - **Commercial IUD insertion:**
-  - Lifepoint +66% (n=20);
-  - ScionHealth +277% (n=5);
-  - Surgery Partners -36% (n=4).
-- **Medicaid:** Ardent is higher for colonoscopy (+175%, n=10). Lifepoint is higher for
-  IUD insertion (+604%, n=5, a small cell).
+  - ScionHealth +507% (n=5);
+  - Lifepoint +249% (n=4);
+  - Surgery Partners -20% (n=4).
+  The case-line and case-rate rules left far fewer Lifepoint IUD prices (4 hospitals, down
+  from 20 before them), so this cell is small.
+- **Medicaid:** Ardent is higher for colonoscopy (+163%, n=10); Lifepoint is about level
+  (+5%, n=10). No Apollo hospital has a Medicaid IUD insertion price in the final build.
 
 **Raw medians** (`ownership_summary.csv`), commercial, nonprofit vs strict PE:
 
 | Code | Nonprofit | Strict PE |
 |---|---|---|
-| 45378 | $2,159 (1,483) | $2,365 (39) |
-| 58100 | $477 (1,317) | $772 (8) |
-| 58300 | $554 (1,258) | $936 (26) |
-| 58120 | $4,286 | $2,876 |
-| 58558 | $4,822 | $4,430 |
-| MS-DRG 621 | $22,242 | $17,321 |
-| 43775 | $9,751 | $4,726 |
+| 45378 | $2,252 (1,370) | $2,365 (39) |
+| 58100 | $414 (1,222) | $405 (7) |
+| 58300 | $417 (1,127) | $998 (9) |
+| 58120 | $4,664 (1,128) | $2,876 (25) |
+| 58558 | $5,055 (1,222) | $4,430 (37) |
+| MS-DRG 621 | $22,295 (1,222) | $17,321 (18) |
+| 43775 | $10,340 (792) | $4,645 (12) |
 
 **The earlier CMS-only definitions:**
 - `cms_flag` (3 Pipeline hospitals, one shared file) and `fund_name` (mostly Quorum and
@@ -349,10 +402,10 @@ Lifepoint drives the strict result, and the ambiguous systems pull the other way
 
 - **PE here mostly means Apollo.** Under the strict definition, Lifepoint and
   ScionHealth make up nearly all priced PE hospitals. The estimates describe those two
-  systems' contracting; they are not a general PE effect. With 3 PE clusters,
-  cluster-robust CIs are too narrow, and a wild cluster bootstrap would not rescue
-  inference with so few treated clusters. Treat the CIs as descriptive, and lean on the
-  direction across codes, the within-state comparisons, and the per-system ratios.
+  systems' contracting; they are not a general PE effect. With 1 to 3 strict-PE
+  clusters, no interval is valid, so strict-PE estimates are reported as exploratory point
+  estimates. Lean on the direction across codes, the within-state comparisons, and the
+  per-system ratios.
 - **Ownership classification is a judgment call.** The strict/ambiguous line (family
   office, public company with a PE minority, joint ventures, creditor ownership) follows
   the rules set for this analysis and is documented per system. PESP counts several ambiguous systems as
@@ -364,7 +417,9 @@ Lifepoint drives the strict result, and the ambiguous systems pull the other way
   Legent, OrthoNebraska). Hospital type only distinguishes acute from critical access.
 - **Roster ownership errors** and **stale CHSP systems and beds** (2023).
 - **List prices, not paid amounts;** percent-of-charge contracts without dollars drop out.
-- **Charge-line packaging** (clinic vs operating-room lines) can move 58100 and 58300.
+- **Charge-line packaging** (clinic vs operating-room lines) can move 58100 and 58300;
+  the case-line and case-rate rules (R/state_medians.R) remove most of it, but HCA's
+  58300 lines at outpatient-surgery rates remain and weigh on the for-profit group.
 - **Coverage.** CCN-matched files only. Some listed hospitals have no prices (Emerus: 0 of
   8; Quorum: 1 of 12).
 - **Multiple testing.** 7 codes x 5 payers x 5 definitions x up to 5 contrasts; no
@@ -383,7 +438,7 @@ Lifepoint drives the strict result, and the ambiguous systems pull the other way
 | `ownership_pe_owners.csv` | owners behind the CMS PE flag and fund names |
 | `ownership_counts.csv` | hospitals by ownership group x hospital type and x state |
 | `ownership_hospital_prices.parquet` | facility price per CCN x code x payer type, with ownership columns |
-| `ownership_model_results.csv` | adjusted differences, CIs, n and clusters per group, cluster mix, flags |
+| `ownership_model_results.csv` | adjusted differences, CRV1 and wild cluster bootstrap CIs and p values, n and clusters per group and cell, cluster mix, exploratory and payment-comparison flags |
 | `ownership_summary.csv` | raw medians, IQR, n by group |
 | `ownership_within_state.csv` | within-state matched comparison |
 | `figures/ownership_forest.png` | forest plot: PE strict, PE broad, non-PE for-profit |

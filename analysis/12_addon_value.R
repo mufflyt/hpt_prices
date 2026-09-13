@@ -4,11 +4,13 @@
 #'   B: endometrial biopsy + pathology at colonoscopy
 #'
 #' Reads HPT_DATA_DIR/output/state_insurance_medians.parquet (from
-#' compute_state_medians()) and config/addon_parameters.csv. Writes to
+#' compute_state_medians()), config/addon_parameters.csv, and CMS OPPS
+#' Addendum B (reference/cms_opps; Medicare coverage of the add-on codes).
+#' Writes to
 #' HPT_DATA_DIR/output/:
 #'   addon_value_by_state.csv       base case, every variant x state x insurance type
 #'   addon_tornado.csv              one-way sensitivity, national commercial and medicaid
-#'   addon_day_capacity.csv         integer-capacity day model, national
+#'   addon_day_capacity.csv         one-room-day model, k = 0..n add-on cases, national
 #'   addon_psa_summary.csv          probabilistic sensitivity analysis, national
 #'   addon_system_perspective.csv   payer and patient view, national
 #'   addon_state_summary.csv        states where each variant is net-positive, by insurance type
@@ -33,12 +35,16 @@ medians <- tibble::as_tibble(arrow::read_parquet(hpt_path("output", "state_insur
 params <- load_addon_parameters("config/addon_parameters.csv")
 values <- addon_parameter_values(params, "base")
 cases <- addon_case_definitions()
+# the full-standalone-rate scenario is meaningless where Medicare does not
+# cover the add-on (58300 and the IUD J-codes are OPPS status E1)
+noncovered_codes <- addon_medicare_noncovered_codes(load_opps_rates(network = TRUE))
 
 # ---- 1. base case by state ---------------------------------------------------
 
 rates <- addon_rates(medians, params, cases, min_hospitals = min_hospitals)
-evaluated <- addon_evaluate(rates, values)
-by_state <- addon_value_by_state(medians, params, cases, min_hospitals = min_hospitals)
+evaluated <- addon_evaluate(rates, values) |> addon_mask_full_rate(noncovered_codes, cases)
+by_state <- addon_value_by_state(medians, params, cases, min_hospitals = min_hospitals) |>
+  addon_mask_full_rate(noncovered_codes, cases)
 write_csv_atomic(by_state, base::file.path(out_dir, "addon_value_by_state.csv"))
 
 missing_primary <- by_state |>
@@ -62,7 +68,7 @@ state_summary <- by_state |>
     states_all_prices_own_state = base::sum(!.data$primary_fallback & !.data$secondary_fallback),
     states_net_positive = base::sum(.data$net_value > 0),
     states_net_positive_room_cost = base::sum(.data$net_value_room_cost > 0),
-    states_net_positive_listed_rate = base::sum(.data$net_value_listed_rate > 0),
+    states_net_positive_listed_rate = if (base::all(base::is.na(.data$net_value_listed_rate))) NA_integer_ else base::sum(.data$net_value_listed_rate > 0, na.rm = TRUE),
     net_value_min = base::min(.data$net_value),
     net_value_median = stats::median(.data$net_value),
     net_value_max = base::max(.data$net_value),
@@ -79,14 +85,29 @@ tornado_rates <- rates |>
   )
 tornado <- addon_tornado(tornado_rates, params) |>
   dplyr::left_join(params |> dplyr::select("parameter", "provisional"), by = "parameter")
+tornado$label <- addon_tornado_labels(tornado, params)
 write_csv_atomic(tornado, base::file.path(out_dir, "addon_tornado.csv"))
 
 # ---- 3. figures ----------------------------------------------------------------
 
+# Every payment is an HPT negotiated rate used as a payment proxy. The blue
+# and green lines charge the displaced case its contribution margin and
+# differ only in what the add-on is paid.
 series_colors <- base::c(
-  "Opportunity cost, collected payment" = "#2a78d6",
-  "Room cost per minute" = "#eb6834",
-  "Opportunity cost, standalone rate" = "#1baf7a"
+  "Displaced-case margin; add-on paid its expected share of the negotiated rate (base)" = "#2a78d6",
+  "Displaced-case margin; add-on paid its full negotiated rate (upper bound)" = "#1baf7a",
+  "Accounting room cost per minute; add-on paid its expected share" = "#eb6834"
+)
+full_rate_series <- base::names(series_colors)[2]
+insurance_labels <- base::c(
+  commercial = "Commercial", medicare_advantage = "Medicare Advantage", medicare = "Traditional Medicare",
+  medicaid = "Medicaid", exchange = "Exchange", self_pay_cash = "Cash price"
+)
+addon_caption <- base::paste(
+  "Above zero = worth it. Payments are HPT negotiated facility rates used as a payment proxy, not claims or remittance data.",
+  "Displaced-case margin = u x (dT / T_P) x contribution margin x primary negotiated rate.",
+  "Room cost: Childers 2018 direct cost (staff and supplies, no overhead) treated as fully variable, so it does not depend on u.",
+  sep = "\n"
 )
 plot_types <- base::c("commercial", "medicare_advantage", "medicare", "medicaid", "exchange", "self_pay_cash")
 
@@ -113,16 +134,21 @@ plot_rows <- national |>
 threshold_curves <- function(rows, over) {
   grid <- if (over == "minutes") base::seq(0, 30, by = 0.5) else base::seq(0, 1, by = 0.02)
   rows |>
-    dplyr::select("case", "variant", "insurance_type", "C_S", "C_S_listed", "R_P", "T_P", "dT", "u", "m", "room_cost_per_minute") |>
+    dplyr::select("case", "variant", "secondary_procedure", "insurance_type", "C_S", "C_S_listed", "R_P", "T_P", "dT", "u", "m", "room_cost_per_minute") |>
     tidyr::expand_grid(x = grid) |>
     dplyr::mutate(
       dT_x = if (over == "minutes") .data$x else .data$dT,
       u_x = if (over == "minutes") .data$u else .data$x,
-      `Opportunity cost, collected payment` = addon_net_value(.data$C_S, .data$R_P, .data$dT_x, .data$T_P, .data$u_x, .data$m),
-      `Room cost per minute` = addon_room_cost_net_value(.data$C_S, .data$dT_x, .data$room_cost_per_minute),
-      `Opportunity cost, standalone rate` = addon_net_value(.data$C_S_listed, .data$R_P, .data$dT_x, .data$T_P, .data$u_x, .data$m)
+      !!base::names(series_colors)[1] := addon_net_value(.data$C_S, .data$R_P, .data$dT_x, .data$T_P, .data$u_x, .data$m),
+      !!base::names(series_colors)[3] := addon_room_cost_net_value(.data$C_S, .data$dT_x, .data$room_cost_per_minute),
+      !!full_rate_series := dplyr::if_else(
+        addon_full_rate_applies(.data$insurance_type, .data$secondary_procedure, noncovered_codes),
+        addon_net_value(.data$C_S_listed, .data$R_P, .data$dT_x, .data$T_P, .data$u_x, .data$m),
+        NA_real_
+      )
     ) |>
     tidyr::pivot_longer(base::names(series_colors), names_to = "framing", values_to = "net_value") |>
+    dplyr::filter(!base::is.na(.data$net_value)) |>
     dplyr::mutate(framing = base::factor(.data$framing, levels = base::names(series_colors)))
 }
 
@@ -135,25 +161,39 @@ plot_threshold <- function(case_id, over) {
   curves <- threshold_curves(rows, over)
   base_x <- if (over == "minutes") rows$dT[1] else rows$u[1]
   label <- if (case_id == "A") "IUD insertion + device at bariatric surgery (MS-DRG 621 price)" else "Endometrial biopsy + pathology at colonoscopy"
-  x_label <- if (over == "minutes") "Added room minutes per add-on (dT)" else "Probability freed time is filled by a primary case (u)"
+  room <- if (case_id == "A") "OR time" else "endoscopy room time"
+  x_label <- if (over == "minutes") "Added room minutes per add-on (dT)" else base::paste0("Probability the added minutes displace otherwise productive ", room, " (u)")
+  no_full_rate <- rows |>
+    dplyr::filter(!addon_full_rate_applies(.data$insurance_type, .data$secondary_procedure, noncovered_codes))
+  caption <- if (base::nrow(no_full_rate) > 0L) {
+    base::paste0(
+      addon_caption, "\nNo full-rate line for ",
+      base::paste(insurance_labels[base::intersect(base::names(insurance_labels), base::as.character(no_full_rate$insurance_type))], collapse = " or "),
+      ": Medicare does not cover ", base::paste(base::unique(no_full_rate$secondary_procedure), collapse = ", "),
+      " (OPPS status E1) and Medicare Advantage\nfollows Medicare coverage, so a posted rate for it is not a payment."
+    )
+  } else {
+    addon_caption
+  }
 
   figure <- ggplot2::ggplot(curves, ggplot2::aes(.data$x, .data$net_value, colour = .data$framing)) +
     ggplot2::geom_hline(yintercept = 0, colour = "#52514e", linewidth = 0.4) +
     ggplot2::geom_vline(xintercept = base_x, colour = "#a3a29c", linewidth = 0.4, linetype = "dashed") +
     ggplot2::geom_line(linewidth = 0.8) +
-    ggplot2::facet_wrap(ggplot2::vars(.data$insurance_type), scales = "free_y") +
-    ggplot2::scale_colour_manual(values = series_colors) +
+    ggplot2::facet_wrap(ggplot2::vars(.data$insurance_type), scales = "free_y", labeller = ggplot2::as_labeller(insurance_labels)) +
+    ggplot2::scale_colour_manual(values = series_colors, breaks = base::names(series_colors)) +
     ggplot2::scale_y_continuous(labels = scales::label_dollar()) +
+    ggplot2::guides(colour = ggplot2::guide_legend(ncol = 1)) +
     ggplot2::labs(
       title = base::paste0("Case ", case_id, ": ", label),
-      subtitle = "Net value to the hospital per add-on, national median facility rates. Dashed line: base case.",
+      subtitle = "Net value to the hospital per add-on, national median negotiated facility rates. Dashed line: base case.",
       x = x_label, y = "Net value per add-on",
-      caption = "Above zero = worth it. Room-cost framing does not depend on u. HPT negotiated rates are not costs or paid amounts."
+      caption = caption
     ) +
     theme_addon()
 
   path <- base::file.path(fig_dir, base::sprintf("addon_threshold_%s_%s.png", over, case_id))
-  ggplot2::ggsave(path, figure, width = 10, height = 6.5, dpi = 150, bg = "#fcfcfb")
+  ggplot2::ggsave(path, figure, width = 10, height = 7.5, dpi = 150, bg = "#fcfcfb")
   base::message("Wrote ", path)
 }
 
@@ -168,9 +208,13 @@ tornado_plot <- tornado |>
   dplyr::slice_max(.data$swing, n = 8, with_ties = FALSE) |>
   dplyr::ungroup() |>
   dplyr::mutate(
-    panel = base::paste(.data$case, .data$variant, .data$insurance_type, sep = " | "),
+    panel = base::paste0(
+      dplyr::if_else(.data$case == "A", "IUD at bariatric surgery", "EMB at colonoscopy"),
+      ", ", dplyr::recode(.data$insurance_type, commercial = "commercial", medicaid = "Medicaid")
+    ),
+    panel = base::factor(.data$panel, levels = base::unique(.data$panel[base::order(.data$case, .data$insurance_type)])),
     # suffix keeps each panel's bars ordered by its own swing
-    parameter = stats::reorder(base::paste0(.data$parameter, "___", .data$panel), .data$swing)
+    parameter = stats::reorder(base::paste0(.data$label, "___", .data$panel), .data$swing)
   )
 
 if (base::nrow(tornado_plot) > 0L) {
@@ -186,11 +230,21 @@ if (base::nrow(tornado_plot) > 0L) {
     ggplot2::facet_wrap(ggplot2::vars(.data$panel), scales = "free", ncol = 2) +
     ggplot2::labs(
       title = "One-way sensitivity of net value per add-on (national)",
-      subtitle = "Bar spans the net value at each parameter's low and high value; dot marks the low value; line = base case.",
-      x = "Net value per add-on", y = NULL
+      subtitle = base::paste(
+        "Displaced-case framing, add-on paid its expected share of the negotiated rate. Bar spans the net value at the low and high",
+        "value in parentheses; dot marks the low value; vertical line = base case.",
+        sep = "\n"
+      ),
+      x = "Net value per add-on", y = NULL,
+      caption = base::paste(
+        "Primary prices: MS-DRG 621 (IUD at bariatric surgery) and CPT 45378 (EMB at colonoscopy).",
+        "Rates are HPT negotiated facility rates used as a payment proxy; price rows move to the interhospital 25th and 75th percentiles.",
+        sep = "\n"
+      )
     ) +
-    theme_addon()
-  ggplot2::ggsave(base::file.path(fig_dir, "addon_tornado.png"), tornado_figure, width = 11, height = 7, dpi = 150, bg = "#fcfcfb")
+    theme_addon() +
+    ggplot2::theme(axis.text.y = ggplot2::element_text(size = 8.5))
+  ggplot2::ggsave(base::file.path(fig_dir, "addon_tornado.png"), tornado_figure, width = 13, height = 7.5, dpi = 150, bg = "#fcfcfb")
 }
 
 # ---- 4. integer capacity -------------------------------------------------------
@@ -204,7 +258,7 @@ day_capacity <- national |>
     # base added minutes, and the high end of the dT range
     dT_scenarios <- base::c(base = row$dT, high = base::unname(high_values[row$added_minutes_param]))
     purrr::imap_dfr(dT_scenarios, function(dT, scenario) {
-      addon_day_value(row$block_minutes, row$T_P, dT, base::seq(0, 1, by = 0.01), row$R_P, row$R_S, row$C_S, row$m) |>
+      addon_day_value(row$block_minutes, row$T_P, dT, row$R_P, row$R_S, row$C_S, row$m) |>
         dplyr::mutate(
           case = row$case, variant = row$variant, insurance_type = row$insurance_type,
           dT_scenario = scenario, block_minutes = row$block_minutes, T_P = row$T_P, dT = dT,
@@ -217,25 +271,51 @@ write_csv_atomic(day_capacity, base::file.path(out_dir, "addon_day_capacity.csv"
 
 day_plot <- day_capacity |>
   dplyr::filter(.data$insurance_type == "commercial") |>
+  dplyr::group_by(.data$case) |>
   dplyr::mutate(
-    panel = base::sprintf("%s | %s | T_P = %g of B = %g min", .data$case, .data$variant, .data$T_P, .data$block_minutes)
-  )
+    panel = base::sprintf(
+      "%s\n%g-min %s, %g-min day: %g fit. Add-on %g min (base) or %g min (high)",
+      dplyr::if_else(.data$case == "A", "IUD at bariatric surgery", "EMB at colonoscopy"),
+      .data$T_P, dplyr::if_else(.data$case == "A", "cases", "colonoscopies"), .data$block_minutes, .data$n_scheduled,
+      base::min(.data$dT), base::max(.data$dT)
+    ),
+    scenario = base::paste(.data$dT_scenario, "added minutes")
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::mutate(panel = base::factor(.data$panel, levels = base::unique(.data$panel[base::order(.data$case)])))
+# label the first k at which each scenario loses a primary case
+day_drops <- day_plot |>
+  dplyr::group_by(.data$panel, .data$scenario) |>
+  dplyr::arrange(.data$k, .by_group = TRUE) |>
+  dplyr::filter(.data$primary_cases_lost > dplyr::lag(.data$primary_cases_lost, default = 0)) |>
+  dplyr::mutate(
+    lost = .data$primary_cases_lost - dplyr::lag(.data$primary_cases_lost, default = 0),
+    note = base::sprintf("%g primary case%s displaced", .data$lost, dplyr::if_else(.data$lost == 1, "", "s"))
+  ) |>
+  dplyr::ungroup()
 
 if (base::nrow(day_plot) > 0L) {
-  day_figure <- ggplot2::ggplot(day_plot, ggplot2::aes(.data$f, .data$contribution_change, colour = .data$dT_scenario)) +
+  scenario_colors <- base::c("base added minutes" = "#2a78d6", "high added minutes" = "#eb6834")
+  day_figure <- ggplot2::ggplot(day_plot, ggplot2::aes(.data$k, .data$contribution_change, colour = .data$scenario)) +
     ggplot2::geom_hline(yintercept = 0, colour = "#52514e", linewidth = 0.4) +
-    ggplot2::geom_line(linewidth = 0.8) +
-    ggplot2::facet_wrap(ggplot2::vars(.data$panel), scales = "free_y") +
-    ggplot2::scale_colour_manual(values = base::c(base = "#2a78d6", high = "#eb6834"), labels = function(x) base::paste(x, "added minutes")) +
+    ggplot2::geom_line(linewidth = 0.6, alpha = 0.6) +
+    ggplot2::geom_point(size = 2.2) +
+    ggplot2::geom_label(
+      data = day_drops, ggplot2::aes(label = .data$note), size = 3, hjust = 1.05, vjust = 0.5,
+      fill = "#fcfcfb", show.legend = FALSE
+    ) +
+    ggplot2::facet_wrap(ggplot2::vars(.data$panel), scales = "free") +
+    ggplot2::scale_colour_manual(values = scenario_colors) +
     ggplot2::scale_y_continuous(labels = scales::label_dollar()) +
-    ggplot2::scale_x_continuous(labels = scales::label_percent()) +
+    ggplot2::scale_x_continuous(breaks = function(lim) base::seq(0, base::floor(lim[2]))) +
     ggplot2::labs(
-      title = "Day-level contribution change when a share f of cases get the add-on (national commercial)",
-      subtitle = "One fully booked room day. A cliff marks a lost primary case: the add-on minutes have used up the end-of-day slack.",
-      x = "Share of primary cases with the add-on (f)", y = "Change in day contribution"
+      title = "One fully booked room day: contribution change as more of the day's cases get the add-on (national commercial)",
+      subtitle = "Each point is a whole number of add-on cases. A drop marks a displaced primary case: the add-on minutes have used up the end-of-day slack.",
+      x = "Scheduled primary cases that get the add-on (k)", y = "Change in day contribution",
+      caption = "Rates are HPT negotiated facility rates used as a payment proxy. High added minutes = the top of the tested range."
     ) +
     theme_addon()
-  ggplot2::ggsave(base::file.path(fig_dir, "addon_day_capacity.png"), day_figure, width = 10, height = 5, dpi = 150, bg = "#fcfcfb")
+  ggplot2::ggsave(base::file.path(fig_dir, "addon_day_capacity.png"), day_figure, width = 11, height = 5.5, dpi = 150, bg = "#fcfcfb")
 }
 
 # ---- 5. PSA ----------------------------------------------------------------------
@@ -243,6 +323,7 @@ if (base::nrow(day_plot) > 0L) {
 psa_rates <- rates |>
   dplyr::filter(.data$state == "US", .data$variant %in% headline_variants, !base::is.na(.data$primary_rate), !base::is.na(.data$procedure_rate), !base::is.na(.data$item_rate))
 psa <- addon_psa(psa_rates, params, n = psa_draws)
+psa$summary <- addon_mask_full_rate(psa$summary, noncovered_codes, cases)
 write_csv_atomic(psa$summary, base::file.path(out_dir, "addon_psa_summary.csv"))
 
 # ---- 6. payer and patient perspective ----------------------------------------

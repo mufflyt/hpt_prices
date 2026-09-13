@@ -9,6 +9,8 @@
 #'   bridge_file_ccn  which CCNs each file covers (from the CCN crosswalk)
 #'   dim_payer        one row per distinct payer/plan text, with payer_type
 #'   fact_rate        one row per file x charge line x code x payer/plan
+#'   ref_code_gross   typical facility / professional gross per code, the
+#'                    blank-billing-class cutoff, and case-line thresholds
 #'
 #' Space and speed choices:
 #' - integer surrogate keys; low-cardinality text as ENUM types (setting,
@@ -19,7 +21,11 @@
 #'   filters on;
 #' - payer/plan text lives once in dim_payer instead of on every rate row;
 #' - the implausible-value rule is applied once at load time as a
-#'   `plausible` flag, so every downstream query uses the same definition.
+#'   `plausible` flag, so every downstream query uses the same definition;
+#' - likewise the fee type (`fee_type`, inferred from gross where the billing
+#'   class is blank) and the operating-room case-line rule for outpatient
+#'   procedures (`case_line`); thresholds in ref_code_gross, rules at
+#'   case_line_multiple().
 
 hpt_database_path <- function() {
   hpt_path("hpt.duckdb")
@@ -72,6 +78,77 @@ plausible_rate_sql <- function(expr) {
   )
 }
 
+#' Typical gross charge per code and fee type (table ref_code_gross)
+#'
+#' For each code, the typical facility and professional gross charge is the
+#' median across files of each file's lowest gross for that code, taken only
+#' from rows whose billing class says so explicitly (outpatient settings).
+#' Two load-time rules use it.
+#'
+#' Fee type. Most files leave billing class blank, and a blank used to count
+#' as facility, which let professional fees into facility medians ("45378 -
+#' PF COLONOSCOPY", "HOSPITALIST BP 45378", or plain "DIAGNOSTIC COLONOSCOPY"
+#' at $160-380 against an OPPS facility rate near $930). A blank-class row
+#' with a gross charge below the geometric midpoint of the two typical gross
+#' charges is now professional (`fee_type_inferred`). This is done only when
+#' each typical rests on at least `fee_type_min_files` files and the facility
+#' typical is at least `fee_type_min_separation()` times the professional one.
+#' Validated against the Medicare Advantage rate on the same blank-class lines
+#' (a line is professional when its MA rate is below the geometric midpoint
+#' of the national MA facility and professional rates), share classified
+#' consistently, gross rule vs "blank = facility" (2026-07-21 snapshot):
+#' 58120 90% vs 62%, 45378 81% vs 77%, G0121 74% vs 72%, but 58100 65% vs
+#' 66%. 58100 and 58300 separate by only 2.2x, hence the 2.5x floor: their
+#' blank rows stay facility. The rule also moves some true facility lines to
+#' professional (214 of 1,222 checked 45378 lines), so analyses drop inferred
+#' professional rows from facility fees but do not count them as
+#' professional fees either (rate_row_filter_sql()).
+#'
+#' Case line. Some hospitals list an office procedure twice: a clinic line
+#' and an operating-room case line carrying the same CPT code (CHS files list
+#' 58300 at about $190 gross and again as "INSERT INTRAUTERINE DEVICE" at
+#' $20,000-75,000). A charge line of an outpatient procedure whose gross
+#' exceeds `case_line_multiple()` times the typical gross for its fee type is
+#' flagged `case_line`. Why 10x: the 58300 facility gross distribution
+#' (2026-07-21 snapshot) has a clinic mode at $180-560 and a second mode of OR
+#' lines from about $5,000 to $100,000, with the trough at $3,000-4,000. A
+#' within-file rule (5x the file's lowest line) was rejected because it
+#' flagged ordinary colonoscopy lines whose negotiated rates were no higher
+#' than the rest.
+#'
+#' Rows are kept and flagged, not deleted.
+case_line_multiple <- function() {
+  10
+}
+
+fee_type_min_separation <- function() {
+  2.5
+}
+
+#' USPS state and territory codes a file's state may take
+valid_state_codes <- function() {
+  base::c(datasets::state.abb, "DC", "PR", "VI", "GU", "AS", "MP")
+}
+
+#' A facility's two-letter state, validated
+#'
+#' Trilliant's hospital_state is parsed from the address and sometimes holds
+#' a street token instead ("PO" from "PO Box 99", "NW" and "SE" from street
+#' quadrants). Only USPS codes are kept; otherwise the code before the ZIP
+#' at the end of the address ("..., KS, 67547") is used; otherwise NULL.
+clean_state_sql <- function(state_col, address_col = NULL) {
+  valid <- sql_string_list(valid_state_codes())
+  from_state <- base::sprintf("CASE WHEN upper(trim(%1$s)) IN (%2$s) THEN upper(trim(%1$s)) END", state_col, valid)
+  if (base::is.null(address_col)) {
+    return(from_state)
+  }
+  from_address <- base::sprintf(
+    "CASE WHEN regexp_extract(upper(%1$s), '(^|[^A-Z])([A-Z]{2})[ ,]+[0-9]{5}(-[0-9]{4})?\\s*$', 2) IN (%2$s) THEN regexp_extract(upper(%1$s), '(^|[^A-Z])([A-Z]{2})[ ,]+[0-9]{5}(-[0-9]{4})?\\s*$', 2) END",
+    address_col, valid
+  )
+  base::paste0("coalesce(", from_state, ", ", from_address, ")")
+}
+
 #' Build or rebuild the database
 #'
 #' @param price_globs Parquet globs of canonical price rows (all sources).
@@ -83,10 +160,13 @@ plausible_rate_sql <- function(expr) {
 #'   profiling).
 #' @param exclude_file_ids mrf_file_id values to leave out, e.g. own-crawl
 #'   files that duplicate a Trilliant file (cross_source_duplicate_file_ids()).
+#' @param fee_type_min_files Files each typical gross needs before blank
+#'   billing classes are inferred from it (see case_line_multiple()).
 build_hpt_database <- function(price_globs, crosswalk_path, universe, codebook,
                                db_path = hpt_database_path(),
                                payer_rules = load_payer_type_rules(),
                                exclude_file_ids = NULL,
+                               fee_type_min_files = 20L,
                                dry_run = FALSE) {
   require_duckdb_cli("1.5.0")
   enums <- hpt_enum_values()
@@ -108,7 +188,16 @@ build_hpt_database <- function(price_globs, crosswalk_path, universe, codebook,
     collapse = " UNION ALL BY NAME "
   )
   crosswalk_cols <- arrow::open_dataset(crosswalk_path)$schema$names
-  payer_text <- "lower(regexp_replace(trim(coalesce(payer_name, '') || ' ' || coalesce(plan_name, '')), '\\s+', ' ', 'g'))"
+  stg_setting <- enum_normalize_sql("s.setting", enums$setting)
+  stg_billing_class <- enum_normalize_sql("s.billing_class", enums$billing_class, base::c(institutional = "facility"))
+  # explicit billing class first; a blank one is professional only when its
+  # gross sits below the code's facility/professional cutoff
+  stg_fee_type <- base::paste0(
+    "CASE WHEN ", stg_billing_class, " = 'professional' THEN 'professional' ",
+    "WHEN ", stg_billing_class, " IN ('facility', 'both') THEN 'facility' ",
+    "WHEN s.gross > 1 AND s.gross < g.professional_gross_cutoff THEN 'professional' ELSE 'facility' END"
+  )
+  payer_text <-"lower(regexp_replace(trim(coalesce(payer_name, '') || ' ' || coalesce(plan_name, '')), '\\s+', ' ', 'g'))"
 
   sql <- base::c(
     base::sprintf("ATTACH %s AS hpt (STORAGE_VERSION 'v1.4.0');", sql_string(build_path)),
@@ -119,6 +208,7 @@ build_hpt_database <- function(price_globs, crosswalk_path, universe, codebook,
     base::sprintf("CREATE TYPE methodology_t AS %s;", enum_sql(enums$methodology)),
     base::sprintf("CREATE TYPE source_t AS %s;", enum_sql(enums$source)),
     base::sprintf("CREATE TYPE payer_type_t AS %s;", enum_sql(enums$payer_type)),
+    base::sprintf("CREATE TYPE fee_type_t AS %s;", enum_sql(base::c("facility", "professional"))),
     base::sprintf("CREATE TYPE concept_t AS %s;", enum_sql(base::sort(base::unique(codebook$concept)))),
 
     # staging (temporary; dropped at the end)
@@ -146,6 +236,30 @@ build_hpt_database <- function(price_globs, crosswalk_path, universe, codebook,
       "FROM read_parquet(", sql_string(codebook_path), ");"
     ),
 
+    # ref_code_gross: typical facility and professional gross per code (from
+    # explicitly classed rows), the blank-class fee-type cutoff, and the
+    # case-line thresholds for outpatient procedures
+    base::paste0(
+      "CREATE TABLE ref_code_gross AS WITH typ AS (",
+      "SELECT c.code_id, c.concept, m.fee_type, median(m.min_gross) AS typical_gross, count(*) AS n_files ",
+      "FROM (SELECT s.mrf_file_id, s.code, s.concept, ", stg_billing_class, " AS fee_type, min(s.gross) AS min_gross ",
+      "FROM stg AS s WHERE s.gross > 1 AND ", stg_billing_class, " IN ('facility', 'professional') ",
+      "AND ", stg_setting, " <> 'inpatient' GROUP BY ALL) AS m ",
+      "JOIN dim_code AS c ON c.code = m.code AND c.concept = CAST(m.concept AS concept_t) GROUP BY ALL), ",
+      "wide AS (SELECT code_id, any_value(concept) AS concept, ",
+      "max(typical_gross) FILTER (WHERE fee_type = 'facility') AS facility_typical_gross, ",
+      "max(n_files) FILTER (WHERE fee_type = 'facility') AS facility_n_files, ",
+      "max(typical_gross) FILTER (WHERE fee_type = 'professional') AS professional_typical_gross, ",
+      "max(n_files) FILTER (WHERE fee_type = 'professional') AS professional_n_files FROM typ GROUP BY code_id) ",
+      "SELECT code_id, facility_typical_gross, facility_n_files, professional_typical_gross, professional_n_files, ",
+      "CASE WHEN facility_n_files >= ", base::as.integer(fee_type_min_files), " AND professional_n_files >= ", base::as.integer(fee_type_min_files),
+      " AND facility_typical_gross >= ", fee_type_min_separation(), " * professional_typical_gross ",
+      "THEN sqrt(facility_typical_gross * professional_typical_gross) END AS professional_gross_cutoff, ",
+      "CASE WHEN CAST(concept AS VARCHAR) IN (", sql_string_list(outpatient_concepts()), ") THEN ", case_line_multiple(), " * facility_typical_gross END AS facility_case_line_gross, ",
+      "CASE WHEN CAST(concept AS VARCHAR) IN (", sql_string_list(outpatient_concepts()), ") THEN ", case_line_multiple(), " * professional_typical_gross END AS professional_case_line_gross ",
+      "FROM wide;"
+    ),
+
     # dim_hospital
     base::paste0(
       "CREATE TABLE dim_hospital AS SELECT DISTINCT facility_id AS ccn, facility_name, address, citytown AS city, state, zip_code, ",
@@ -165,7 +279,7 @@ build_hpt_database <- function(price_globs, crosswalk_path, universe, codebook,
       # license state); used when a file matched no CCN
       base::paste0(
         "LEFT JOIN (SELECT mrf_file_id, ",
-        if ("state" %in% crosswalk_cols) "upper(mode(NULLIF(trim(state), '')))" else "NULL::VARCHAR", " AS file_state, ",
+        if ("state" %in% crosswalk_cols) base::paste0("mode(", clean_state_sql("state", if ("address" %in% crosswalk_cols) "address"), ")") else "NULL::VARCHAR", " AS file_state, ",
         if ("hospital_name" %in% crosswalk_cols) "mode(hospital_name)" else "NULL::VARCHAR", " AS xw_hospital_name, ",
         if ("type_2_npi" %in% crosswalk_cols) "string_agg(DISTINCT type_2_npi, ';')" else "NULL::VARCHAR", " AS xw_type_2_npi ",
         "FROM read_parquet(", sql_string(crosswalk_path), ") GROUP BY mrf_file_id) USING (mrf_file_id);"
@@ -205,16 +319,20 @@ build_hpt_database <- function(price_globs, crosswalk_path, universe, codebook,
     base::paste0(
       "CREATE TABLE fact_rate AS SELECT ",
       "f.file_id, c.code_id, p.payer_id, ",
-      "CAST(", enum_normalize_sql("s.setting", enums$setting), " AS setting_t) AS setting, ",
-      "CAST(", enum_normalize_sql("s.billing_class", enums$billing_class, base::c(institutional = "facility")), " AS billing_class_t) AS billing_class, ",
+      "CAST(", stg_setting, " AS setting_t) AS setting, ",
+      "CAST(", stg_billing_class, " AS billing_class_t) AS billing_class, ",
       "CAST(", enum_normalize_sql("s.methodology", enums$methodology, base::c("percent of total billed charge" = "percent of total billed charges", "percentage of total billed charges" = "percent of total billed charges", "fee-schedule" = "fee schedule")), " AS methodology_t) AS methodology, ",
       "s.type_verified, s.gross, s.discounted_cash, s.min, s.max, s.negotiated_dollar, s.negotiated_percentage, ",
       "s.negotiated_algorithm, s.median_amount, s.p10, s.p90, s.count, s.estimated_amount, s.description, s.modifiers, s.notes, ",
-      plausible_rate_sql("s.negotiated_dollar"), " AS plausible ",
+      plausible_rate_sql("s.negotiated_dollar"), " AS plausible, ",
+      "CAST(", stg_fee_type, " AS fee_type_t) AS fee_type, ",
+      "coalesce(", stg_billing_class, " NOT IN ('facility', 'professional', 'both') AND s.gross > 1 AND g.professional_gross_cutoff IS NOT NULL, false) AS fee_type_inferred, ",
+      "coalesce(s.gross > CASE WHEN ", stg_fee_type, " = 'professional' THEN g.professional_case_line_gross ELSE g.facility_case_line_gross END, false) AS case_line ",
       "FROM stg AS s ",
       "JOIN dim_file AS f USING (mrf_file_id) ",
       "JOIN dim_code AS c ON c.code = s.code AND c.concept = CAST(s.concept AS concept_t) ",
       "LEFT JOIN dim_payer AS p ON p.payer_key = s.payer_key ",
+      "LEFT JOIN ref_code_gross AS g ON g.code_id = c.code_id ",
       "ORDER BY c.code_id, f.file_id;"
     ),
 

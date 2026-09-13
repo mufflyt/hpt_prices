@@ -14,7 +14,6 @@
 #' professional fees are what that model scales.
 
 payer_ratio_sql <- function(codes, exclude_file_ids = NULL) {
-  outpatient <- sql_string_list(outpatient_concepts())
   exclude_sql <- if (base::length(exclude_file_ids) > 0L) {
     base::paste0(" AND mrf_file_id NOT IN (", sql_string_list(exclude_file_ids), ")")
   } else {
@@ -24,11 +23,11 @@ payer_ratio_sql <- function(codes, exclude_file_ids = NULL) {
   base::paste0(
     "WITH base AS (\n",
     "  SELECT unit_id, CAST(concept AS VARCHAR) AS concept, code,\n",
-    "         CASE WHEN billing_class = 'professional' THEN 'professional' ELSE 'facility' END AS fee_type,\n",
+    "         CAST(fee_type AS VARCHAR) AS fee_type,\n",
     "         CAST(payer_type AS VARCHAR) AS payer_type, payer_name, plan_name, negotiated_dollar\n",
     "  FROM v_hospital_rate\n",
     "  WHERE plausible AND payer_type IS NOT NULL AND code IN (", sql_string_list(codes), ")\n",
-    "    AND NOT (CAST(concept AS VARCHAR) IN (", outpatient, ") AND setting = 'inpatient')", exclude_sql, "\n",
+    "    AND ", rate_row_filter_sql(), exclude_sql, "\n",
     "),\n",
     "plan_rates AS (\n",
     "  SELECT unit_id, concept, code, fee_type, payer_type, payer_name, plan_name, median(negotiated_dollar) AS plan_median\n",

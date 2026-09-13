@@ -2,6 +2,104 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-13 (line-type cleanup; geographic figures)
+
+### Fixed
+- IUD insertion (58300) mixed three products under one code: clinic insertions, operating-room case
+  lines, and outpatient-surgery case rates. Two rules now keep only the insertion itself
+  (`rate_row_filter_sql()`, evidence in `case_line_multiple()`):
+  - `case_line` (load time, all outpatient procedures): a charge line whose gross exceeds 10x the
+    code's typical gross for its fee type. 58300 facility gross has a clinic mode at $180-560 and
+    a second mode of OR lines at $5,000-100,000 (CHS lists "INSERT INTRAUTERINE DEVICE" at
+    $20,000-75,000 beside a $190 clinic line). About 4% of 58300 rows are flagged; under 2.2% for
+    every other code.
+  - Case-rate and per-diem rows of the office procedures (EMB, IUD insertion) are left out: a CMS
+    case rate prices a package triggered by a primary procedure. Commercial 58300 case-rate rows
+    had a median of $1,750-2,940 against $226-255 for fee-schedule rows. Colonoscopy keeps them
+    (its case rate is the endoscopy encounter).
+  - National facility 58300: commercial $551 to $417, cash $316 to $266, MA $171 to $160. 58300 is
+    not covered by traditional Medicare (OPPS status E1), so its Medicare and MA medians are not
+    payment benchmarks. HCA (148 hospitals) lists 58300 only on a line with no gross and no
+    methodology at outpatient-surgery rates (commercial about $2,125, MA $2,350), which no rule
+    can separate; it remains.
+- Blank billing class no longer means facility. Blank-class rows with a professional-level gross
+  (below the geometric midpoint of the code's typical facility and professional gross, where the
+  two differ by at least 2.5x) are `fee_type_inferred` professional and left out of both facility
+  and professional fees. Colonoscopy facility medians had been pulled down by unlabeled physician
+  fees ("45378 - PF COLONOSCOPY", "HOSPITALIST BP 45378"): national commercial 45378 $2,070 to
+  $2,220, Medicare $927 to $958 (now 1.008x OPPS). Professional medians are unchanged. Iowa, South
+  Dakota, and West Virginia commercial colonoscopy had sat below Medicare because of this.
+- Payer type: "MOLINA dba CONNECTICARE" was Medicaid through the Molina rule. ConnectiCare is a
+  commercial and exchange insurer and Connecticut Medicaid has no managed-care plans; a new rule
+  types it commercial (ConnectiCare Medicare and exchange plans keep their types). Connecticut's
+  colonoscopy "Medicaid" median of $5,657 came from these rows. The same rule types "Buckeye
+  Commercial" (Centene's Ohio commercial product, listed in WVU files) commercial instead of
+  Buckeye Health Plan Medicaid.
+- `fact_rate` gains `fee_type`, `fee_type_inferred`, and `case_line`; `ref_code_gross` holds the
+  thresholds. Queries use the stored `fee_type` instead of re-deriving it from billing class.
+- File states are validated (`clean_state_sql()`). Trilliant's `hospital_state` sometimes holds a
+  street token ("PO" from "PO Box", "NW"/"SE" from street quadrants), which created three bogus
+  state units (NW, PO, SE) from five files with no CCN match. Only USPS codes are kept, else the
+  code before the ZIP at the end of the address, else NULL.
+
+### Changed (figure review)
+- Add-on figures:
+  - HPT rates are labelled a payment proxy, not claims or remittance data.
+  - The three lines are now "displaced-case margin, add-on paid its expected share of the
+    negotiated rate" (base), the same with the full negotiated rate (upper bound), and
+    "accounting room cost per minute". The room cost is Childers 2018's direct-expense average,
+    so its "(marginal)" description was wrong.
+  - The model is unchanged: the displacement term already charges the displaced case's
+    contribution margin.
+  - The full-rate scenario is blanked where Medicare does not cover the add-on (58300 and IUD
+    J-codes are OPPS E1; MA follows Medicare). This applies to the case A figures and the state,
+    PSA, and by-state outputs.
+  - The day-capacity figure is discrete: k = 0..n add-on cases in one fully booked room day, with
+    each displaced primary case labelled.
+  - Tornado bars carry plain-language labels with their tested ranges.
+  - The u axis reads "probability the added minutes displace otherwise productive room time".
+- PE ownership model:
+  - The wild cluster restricted bootstrap (Webb weights, 9,999 draws, test-inversion CIs) replaces
+    CRV1 intervals in the forest; CRV1 stays in the CSV. The fast cluster-sum implementation
+    matches brute-force refits and sandwich CRV1 exactly.
+  - Groups from fewer than 5 health systems are exploratory (point estimate, no interval): every
+    strict-PE estimate (1-3 systems) and 43 of 93 estimates overall.
+  - With the bootstrap, 4 of the 50 non-exploratory estimates are significant (12 with CRV1).
+  - IUD insertion x Medicare Advantage is flagged as not a payment comparison and dropped from
+    the plot.
+  - Verified: the % axis is 100 x (exp(b) - 1) with limits exponentiated separately; strict and
+    broad PE are separate models.
+- Geographic figures:
+  - States with fewer than 5 hospitals are suppressed on the maps (neutral hatched fill, no
+    estimate); the ranking chart still shows them as hollow dots.
+  - The MA map moves to the supplement (`supp_geo3`), joined by an MA state-ranking chart
+    (`supp_geo4`) and a system-weighting scatter (`supp_geo5`).
+  - System-weighting sensitivity (one value per health system per state): Spearman with the
+    hospital-weighted state medians is 0.72 commercial, 0.81 Medicaid, 0.76 MA. Commercial p90/p10
+    falls from 1.96 to 1.67 and state R2 from 0.20 to 0.14. The commercial-versus-MA contrast
+    holds, but some state positions (WV, NC, VT, KS, GA, Connecticut MA) mostly reflect single
+    large systems.
+
+### Added
+- `R/geo_figures.R`, `analysis/15_geographic_figures.R`: colonoscopy (45378) state maps of the
+  commercial, Medicaid, and Medicare Advantage rate relative to Medicare, and a ranked
+  state-median chart with within-state interquartile ranges. The Medicare benchmark is each
+  hospital's OPPS payment (Addendum B rate x (0.6 x FY 2026 IPPS wage index + 0.4); critical
+  access hospitals get the state rural wage index), not hospital-listed Medicare rates, which are
+  thin and noisy by state. Maps are drawn with `mysterymaps::mysterymaps_geographic_map()`;
+  states with fewer than 5 hospitals are hatched. Result: MA is flat (national 1.00x; p90/p10 of
+  state medians 1.10), commercial varies about 2x across states (national 2.30x) and Medicaid
+  about 4.6x (national 0.78x); state explains 20% of the hospital-level variance in commercial
+  price.
+- CMS FY 2026 IPPS Tables 2-3 download with provenance (`download_ipps_wage_index()`).
+
+### Effect on other outputs
+- Payer-to-Medicare professional ratios for emb_colonoscopy: unchanged except commercial D&C
+  (58120) 1.666 to 1.626 (66 hospitals, was 68).
+- Add-on model: conclusions unchanged (EMB at colonoscopy, commercial, +$115 per add-on,
+  break-even 16.4 added minutes; IUD at bariatric surgery negative for every payer).
+- Validation: 44 pass, 4 warn, 0 fail.
+
 ## 2026-09-13 (D&C and hysteroscopy codes; vendor-URL cross-linking corrected)
 
 ### Added

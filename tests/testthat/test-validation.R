@@ -394,6 +394,13 @@ payer_rule_cases <- function() {
     "Molina Healthcare",                 "Medicare",       "medicare_advantage", "Molina Medicare stays MA",
     "Molina Healthcare",                 "Marketplace",    "exchange",           "Molina Marketplace stays exchange",
     "Virginia Premier",                  NA,               "medicaid",           "Medicaid MCO",
+    # ConnectiCare (Molina-owned since 2025) is commercial; Connecticut Medicaid has no MCOs
+    "MOLINA dba CONNECTICARE",           "MOLINA MANAGED CARE", "commercial",  "ConnectiCare before the Molina Medicaid rule",
+    "ConnectiCare",                      "Medicare Advantage", "medicare_advantage", "ConnectiCare MA stays MA",
+    "ConnectiCare Medicare",             NA,               "medicare_advantage", "ConnectiCare on the MA carrier list",
+    "ConnectiCare",                      "Exchange",       "exchange",           "ConnectiCare exchange stays exchange",
+    "Buckeye Commercial",                "Buckeye Commercial", "commercial",   "commercial product under a Medicaid brand",
+    "Buckeye Health Plan",               "Ohio Medicaid",  "medicaid",           "Buckeye Medicaid unaffected",
     # pilot own-crawl strings (2026-09-12)
     "Optum VA",                          "Optum VA",       "tricare_va",         "Optum runs VA CCN regions 1-3",
     "UCARE",                             "Dually Eligible", "medicare_advantage", "dual-eligible SNP",

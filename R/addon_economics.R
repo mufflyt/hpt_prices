@@ -5,20 +5,31 @@
 #'   A: IUD insertion (58300 + device) at bariatric surgery (MS-DRG 621; 620, 43775, 43644)
 #'   B: endometrial biopsy (58100 + pathology 88305) at colonoscopy (45378, G0121, G0105)
 #'
-#' Notation (see docs/addon_methods.md):
-#'   R_P  facility payment per primary case (HPT state x insurance median)
-#'   R_S  facility payment the hospital collects for the secondary bundle
+#' Notation (see docs/addon_methods.md). Every payment is an HPT negotiated
+#' facility rate used as a payment proxy; none is a claims or remittance
+#' amount.
+#'   R_P  negotiated facility rate per primary case (HPT state x insurance median)
+#'   R_S  expected payment for the secondary bundle: the paid share of each
+#'        component's standalone negotiated rate (pay_frac x rate)
 #'   C_S  secondary contribution = R_S - variable costs of the add-on
 #'   T_P  room minutes per primary case, including turnover
 #'   dT   room minutes the add-on adds
-#'   u    probability the freed minutes would have held another primary case
-#'   m    contribution-margin share of the primary payment
+#'   u    probability the added minutes displace otherwise productive room
+#'        time, i.e. would otherwise have held another primary case
+#'   m    contribution-margin share of the primary rate
 #'
-#'   opportunity-cost framing: net = C_S - u * (dT / T_P) * m * R_P
-#'   room-cost framing:        net = C_S - dT * (room + anesthesia cost per minute)
+#'   displaced-case framing: net = C_S - u * (dT / T_P) * m * R_P
+#'                           (the displaced case costs its contribution margin,
+#'                           not its whole payment)
+#'   full-rate scenario:     the same with R_S at the full standalone rates
+#'                           (an upper bound on add-on revenue)
+#'   room-cost framing:      net = C_S - dT * (direct room + anesthesia cost per minute)
+#'                           (Childers 2018 accounting direct cost: staff and
+#'                           supplies, no overhead, treated as fully variable)
 #'
-#' The two framings are alternatives: displacement already prices the room
-#' minutes, so a per-minute room cost is never added on top of it.
+#' The displaced-case and room-cost framings are alternatives: displacement
+#' already prices the room minutes, so a per-minute room cost is never added
+#' on top of it.
 #'
 #' Parameters live in config/addon_parameters.csv. Revenue comes from
 #' compute_state_medians() output (R/state_medians.R).
@@ -247,7 +258,7 @@ addon_rates <- function(medians, params, cases = addon_case_definitions(),
 
 # ---- core equations ---------------------------------------------------------
 
-#' Net value per add-on, opportunity-cost framing
+#' Net value per add-on, displaced-case (opportunity-cost) framing
 addon_net_value <- function(C_S, R_P, dT, T_P, u, m) {
   C_S - u * (dT / T_P) * m * R_P
 }
@@ -293,6 +304,53 @@ addon_breakeven_minutes_room_cost <- function(C_S, cost_per_minute) {
 #' Revenue per minute of the add-on relative to the primary case
 addon_revenue_per_minute_ratio <- function(R_S, dT, R_P, T_P) {
   (R_S / dT) / (R_P / T_P)
+}
+
+# ---- coverage -----------------------------------------------------------------
+
+#' Insurance types that follow traditional Medicare coverage
+addon_medicare_coverage_types <- function() {
+  base::c("medicare", "medicare_advantage")
+}
+
+#' Codes Medicare does not cover, from CMS OPPS Addendum B status indicators
+#'
+#' E1 and E2 mark items and services not covered by Medicare (58300 and the
+#' IUD J-codes are E1 in July 2026). Medicare Advantage follows Medicare
+#' coverage, since contraception is not a Part A or B benefit.
+#' @param opps_rates From load_opps_rates() (R/validation.R).
+addon_medicare_noncovered_codes <- function(opps_rates) {
+  if (base::is.null(opps_rates)) {
+    base::stop("No OPPS Addendum B rates; run load_opps_rates(network = TRUE) once.")
+  }
+  base::unique(opps_rates$code[opps_rates$status_indicator %in% base::c("E1", "E2")])
+}
+
+#' Whether the full-standalone-rate scenario means anything for a row
+#'
+#' It does not when the add-on's procedure is non-covered for the payer: a
+#' posted Medicare "rate" for a non-covered service is not a payment anyone
+#' makes. The expected-share framing already sets those payments to 0.
+addon_full_rate_applies <- function(insurance_type, secondary_procedure, noncovered_codes) {
+  !(insurance_type %in% addon_medicare_coverage_types() & secondary_procedure %in% noncovered_codes)
+}
+
+#' Blank the full-rate scenario where it does not apply
+#'
+#' Works on any table with insurance_type plus either secondary_procedure or
+#' variant (looked up in `cases`).
+addon_mask_full_rate <- function(tbl, noncovered_codes, cases = addon_case_definitions(),
+                                 columns = base::intersect(base::c("net_value_listed_rate", "prob_worth_it_listed_rate"), base::names(tbl))) {
+  procedure <- if ("secondary_procedure" %in% base::names(tbl)) {
+    tbl$secondary_procedure
+  } else {
+    cases$secondary_procedure[base::match(tbl$variant, cases$variant)]
+  }
+  applies <- addon_full_rate_applies(tbl$insurance_type, procedure, noncovered_codes)
+  for (column in columns) {
+    tbl[[column]][!applies] <- NA_real_
+  }
+  tbl
 }
 
 #' Parameter lookup for evaluate(): a named vector (one scenario) or a
@@ -392,8 +450,9 @@ addon_value_by_state <- function(medians, params, cases = addon_case_definitions
 
 #' Primary cases that fit in a block when a fraction f of cases get the add-on
 #'
-#' floor(B / (T_P + f * dT)); a tiny tolerance keeps exact fits (480 / 60)
-#' from flooring down on floating-point error.
+#' floor(B / (T_P + f * dT)), the continuous approximation across many days;
+#' addon_day_value() is the discrete version for one day. A tiny tolerance
+#' keeps exact fits (480 / 60) from flooring down on floating-point error.
 addon_cases_per_day <- function(block_minutes, T_P, dT, f) {
   base::floor(block_minutes / (T_P + f * dT) + 1e-9)
 }
@@ -404,24 +463,46 @@ addon_free_addons_per_day <- function(block_minutes, T_P, dT) {
   base::floor((block_minutes - cases * T_P) / dT + 1e-9)
 }
 
-#' Day-level revenue and contribution with and without add-ons
+#' Primary cases a block still holds when k of the day's cases get the add-on
 #'
-#' @return Tibble, one row per f: primary cases, add-ons, day revenue and
-#'   day contribution, and their change against f = 0.
-addon_day_value <- function(block_minutes, T_P, dT, f, R_P, R_S, C_S, m) {
-  cases <- addon_cases_per_day(block_minutes, T_P, dT, f)
-  cases_without <- addon_cases_per_day(block_minutes, T_P, dT, 0)
-  addons <- f * cases
+#' Starts from the n cases that fit without add-ons and drops the last case
+#' while c x T_P + min(k, c) x dT overruns the block (the displaced case is
+#' one without an add-on, so min(k, c) add-ons are still done).
+addon_primary_cases_with_addons <- function(block_minutes, T_P, dT, k) {
+  n <- addon_cases_per_day(block_minutes, T_P, 0, 0)
+  base::vapply(k, function(kk) {
+    cases <- n
+    while (cases > 0 && cases * T_P + base::min(kk, cases) * dT > block_minutes + 1e-9) {
+      cases <- cases - 1
+    }
+    cases
+  }, base::numeric(1))
+}
+
+#' Day-level revenue and contribution for one fully booked room day
+#'
+#' One row per k = 0..n, the number of the day's n scheduled primary cases
+#' that get the add-on. A single day has a whole number of cases, so k is
+#' discrete; a drop marks a displaced primary case once the add-on minutes
+#' use up the end-of-day slack.
+#' @return Tibble: k, n_scheduled, primary_cases, addons, primary_cases_lost,
+#'   day revenue and contribution, and their change against k = 0.
+addon_day_value <- function(block_minutes, T_P, dT, R_P, R_S, C_S, m,
+                            k = base::seq(0, addon_cases_per_day(block_minutes, T_P, 0, 0))) {
+  n <- addon_cases_per_day(block_minutes, T_P, 0, 0)
+  cases <- addon_primary_cases_with_addons(block_minutes, T_P, dT, k)
+  addons <- base::pmin(k, cases)
 
   tibble::tibble(
-    f = f,
+    k = k,
+    n_scheduled = n,
     primary_cases = cases,
     addons = addons,
-    primary_cases_lost = cases_without - cases,
+    primary_cases_lost = n - cases,
     day_revenue = cases * R_P + addons * R_S,
     day_contribution = cases * m * R_P + addons * C_S,
-    revenue_change = .data$day_revenue - cases_without * R_P,
-    contribution_change = .data$day_contribution - cases_without * m * R_P
+    revenue_change = .data$day_revenue - n * R_P,
+    contribution_change = .data$day_contribution - n * m * R_P
   )
 }
 
@@ -496,6 +577,77 @@ addon_tornado <- function(rates, params) {
   }) |>
     dplyr::filter(.data$swing > 0) |>
     dplyr::arrange(.data$case, .data$variant, .data$insurance_type, dplyr::desc(.data$swing))
+}
+
+#' Human-readable tornado labels with the range tested
+#'
+#' Short names come from `addon_label_map()`; the range comes from each
+#' row's low and high inputs, formatted by the parameter's unit (minutes,
+#' share, or dollars). Price rows show the interhospital IQR.
+#' @param tornado From addon_tornado() (needs case, parameter, low_input,
+#'   high_input).
+addon_tornado_labels <- function(tornado, params) {
+  units <- stats::setNames(params$unit, params$parameter)
+  base_name <- base::sub("__.*$", "", tornado$parameter)
+  unit <- base::unname(units[tornado$parameter])
+  unit[base::grepl("hospital IQR", tornado$parameter)] <- "USD_iqr"
+
+  short <- base::vapply(base::seq_along(base_name), function(i) {
+    addon_label_map(tornado$case[i])[[base_name[i]]] %||% base_name[i]
+  }, base::character(1))
+
+  fmt <- function(x, unit) {
+    base::ifelse(
+      unit %in% base::c("share", "probability"), scales::label_percent(accuracy = 1)(x),
+      base::ifelse(unit == "minutes", base::paste0(scales::label_number(accuracy = 1)(x), " min"),
+        scales::label_dollar(accuracy = 1)(x)
+      )
+    )
+  }
+  range <- base::paste(fmt(tornado$low_input, unit), "to", fmt(tornado$high_input, unit))
+  range[unit == "USD_iqr"] <- base::paste0(range[unit == "USD_iqr"], ", hospital IQR")
+  base::paste0(short, " (", range, ")")
+}
+
+#' Short labels for the parameters a case's net value depends on
+addon_label_map <- function(case) {
+  shared <- base::list(
+    combined_emb_anesthesia_drug_increment_cost = "Added anesthetic drug cost",
+    coordination_cost = "Scheduling and coordination cost"
+  )
+  specific <- if (case == "A") {
+    base::list(
+      sleeve_or_slot_minutes = "Bariatric OR time per case",
+      bypass_or_slot_minutes = "Bypass OR time per case",
+      iud_added_minutes_at_surgery = "Added OR time for the IUD",
+      utilization_A = "Chance added minutes displace a bariatric case",
+      contribution_margin_bariatric = "Bariatric contribution margin",
+      pay_frac_A_procedure = "Share of the IUD insertion rate paid when combined",
+      pay_frac_A_item = "Share of the device rate paid when combined",
+      iud_acquisition_cost_J7298 = "Mirena acquisition cost",
+      iud_acquisition_cost_J7297 = "Liletta acquisition cost",
+      iud_acquisition_cost_J7300 = "Paragard acquisition cost",
+      iud_insertion_supply_cost = "IUD insertion supplies",
+      `R_P (hospital IQR)` = "Bariatric negotiated rate",
+      `R_S procedure (hospital IQR)` = "IUD insertion negotiated rate",
+      `R_S item (hospital IQR)` = "Device negotiated rate"
+    )
+  } else {
+    base::list(
+      colonoscopy_slot_minutes = "Colonoscopy room time per case",
+      combined_emb_added_minutes = "Added room time for the EMB",
+      utilization_B = "Chance added minutes displace a colonoscopy",
+      contribution_margin_colonoscopy = "Colonoscopy contribution margin",
+      pay_frac_B_procedure = "Share of the EMB rate paid when combined",
+      pay_frac_B_item = "Share of the pathology rate paid when combined",
+      emb_pathology_cost = "Pathology processing cost",
+      emb_disposable_supply_cost = "EMB supplies",
+      `R_P (hospital IQR)` = "Colonoscopy negotiated rate",
+      `R_S procedure (hospital IQR)` = "EMB negotiated rate",
+      `R_S item (hospital IQR)` = "Pathology negotiated rate"
+    )
+  }
+  base::c(specific, shared)
 }
 
 #' Draw one parameter n times from its distribution
@@ -580,7 +732,7 @@ addon_psa <- function(rates, params, n = 5000L, seed = 20260912L) {
 
 #' Payer and patient view of combining, one row per evaluated row
 #'
-#' Payer: payment for the add-on in the combined setting (collected facility
+#' Payer: payment for the add-on in the combined setting (expected paid facility
 #' share plus a facility-setting professional fee) against a standalone
 #' office encounter (office procedure fee + E/M visit + device or pathology).
 #' Patient: office visits and time avoided, and the expected delay imposed on

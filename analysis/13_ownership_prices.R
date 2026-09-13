@@ -120,6 +120,8 @@ frame <- ownership_model_frame(prices, classification, chsp)
 engine <- ownership_model_engine()
 base::message("Model engine: ", engine, if (engine == "lm") " (no clustered SEs: install sandwich + lmtest)" else "")
 
+# the forest series get a wild cluster restricted bootstrap (9,999 Webb draws,
+# seeded per coefficient); the rest keep CRV1 intervals
 results <- ownership_models(frame, definitions, engine = engine)
 summary_tbl <- ownership_raw_summary(frame, definitions)
 within_state <- ownership_within_state(frame, definitions)
@@ -129,18 +131,22 @@ write_csv_atomic(within_state, base::file.path(out_dir, "ownership_within_state.
 write_csv_atomic(ownership_system_ratios(frame), base::file.path(out_dir, "pe_system_price_ratios.csv"))
 
 forest <- plot_ownership_forest(results)
-ggplot2::ggsave(base::file.path(fig_dir, "ownership_forest.png"), forest, width = 8, height = 10, dpi = 200, bg = "white")
+ggplot2::ggsave(base::file.path(fig_dir, "ownership_forest.png"), forest, width = 8.5, height = 11, dpi = 200, bg = "white")
 
 # ---- 5. headline ------------------------------------------------------------------
 
-base::message("Adjusted % difference vs nonprofit (commercial and Medicaid):")
+base::message("Adjusted % difference vs nonprofit (commercial and Medicaid): CRV1 and wild cluster bootstrap 95% CIs")
 results |>
-  dplyr::filter(.data$term %in% base::c("pe", "distressed_fund"), .data$payer_type %in% base::c("commercial", "medicaid"),
-                .data$definition %in% base::c("pe_strict", "pe_broad")) |>
+  dplyr::filter(.data$term %in% base::c("pe", "for_profit_non_pe"), .data$payer_type %in% base::c("commercial", "medicaid"),
+                .data$definition %in% base::c("pe_strict", "pe_broad"), .data$payment_comparison) |>
+  dplyr::filter(!(.data$definition == "pe_broad" & .data$term == "for_profit_non_pe")) |>
   dplyr::transmute(
-    .data$definition, .data$term, .data$code, .data$payer_type, .data$n_group, .data$n_group_clusters, .data$n_hospitals,
-    pct = base::sprintf("%+.1f%% (%+.1f%% to %+.1f%%)", 100 * .data$pct_diff, 100 * .data$pct_ci_low, 100 * .data$pct_ci_high),
-    low_n = .data$n_group < 10L
+    .data$definition, .data$term, .data$code, .data$payer_type, .data$n_group, .data$n_group_clusters, .data$n_hospitals, .data$n_clusters,
+    pct = base::sprintf("%+.1f%%", 100 * .data$pct_diff),
+    crv1 = base::sprintf("%+.1f%% to %+.1f%%", 100 * .data$pct_ci_low, 100 * .data$pct_ci_high),
+    wcr = base::sprintf("%+.1f%% to %+.1f%%", 100 * .data$pct_wcr_ci_low, 100 * .data$pct_wcr_ci_high),
+    wcr_p = base::round(.data$wcr_p_value, 3),
+    .data$exploratory
   ) |>
-  base::print(n = 50)
+  base::print(n = 60, width = 200)
 base::message("Results: ", base::file.path(out_dir, "ownership_model_results.csv"))

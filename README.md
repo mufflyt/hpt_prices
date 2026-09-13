@@ -69,13 +69,17 @@ Rscript analysis/09_build_database.R      # hpt.duckdb star schema (readable fro
 Rscript analysis/10_validate.R            # spot-check validation report
 Rscript analysis/11_state_medians.R       # median price per state x insurance type x code
 Rscript analysis/12_addon_value.R         # is an add-on procedure worth the lost primary capacity?
+Rscript analysis/13_ownership_prices.R    # private-equity vs other hospitals
+Rscript analysis/14_emb_payer_ratios.R    # within-hospital payer-to-Medicare ratios
+Rscript analysis/15_geographic_figures.R  # colonoscopy maps and state ranking, relative to Medicare OPPS
 ```
 
 ### The database (`hpt.duckdb`)
 
 | Table | Grain | Notes |
 |---|---|---|
-| `fact_rate` | file x charge line x code x payer/plan | sorted by (code_id, file_id); ENUM setting, billing class, methodology; `plausible` flag |
+| `fact_rate` | file x charge line x code x payer/plan | sorted by (code_id, file_id); ENUM setting, billing class, methodology; `plausible`, `fee_type` (+ `fee_type_inferred`), and `case_line` flags |
+| `ref_code_gross` | code | typical facility and professional gross, the blank-billing-class cutoff, case-line thresholds |
 | `dim_code` | codebook code | concept, `anchor` (reference code per concept), `active_2026` |
 | `dim_payer` | distinct payer/plan text | `payer_type` from `config/payer_type_rules.csv`; Trilliant's own label kept alongside |
 | `dim_file` | MRF file | source, URL, version, dates, header identifiers |
@@ -83,9 +87,15 @@ Rscript analysis/12_addon_value.R         # is an add-on procedure worth the los
 | `dim_hospital` | CMS CCN | roster plus AHRQ health system |
 | `v_rate`, `v_hospital_rate` | views | denormalized; `v_hospital_rate` has one row per hospital a rate applies to, with state |
 
-State medians are two-stage: first the median across payer/plan rates within each
-hospital, then the median across hospitals in the state. That way a hospital listing 40
-plans counts the same as one listing 3.
+State medians are three-stage: the median of each payer/plan contract's rows, then the
+median across contracts within each hospital, then the median across hospitals in the
+state. That way a hospital listing 40 plans counts the same as one listing 3.
+
+Rows that price a different product than the procedure are left out
+(`rate_row_filter_sql()` in `R/state_medians.R`): explicitly inpatient rows and
+operating-room case lines of outpatient procedures, case-rate and per-diem rows of the
+office procedures (EMB, IUD insertion), and blank-billing-class rows whose gross is
+professional-level. Rules and their evidence: `case_line_multiple()` in `R/duckdb_store.R`.
 
 Every crawl stage is resumable and logs per-item status under `HPT_DATA_DIR/state/`.
 Set `HPT_MAX_ITEMS` for a pilot run.
