@@ -16,12 +16,15 @@
 #' - facility and professional fees are reported separately (`fee_type`);
 #'   "unknown"/"both" billing class counts as facility, since hospital MRFs
 #'   list facility charges unless they say otherwise;
-#' - outpatient procedures (colonoscopy, EMB, IUD, pathology) exclude rows
+#' - outpatient procedures (colonoscopy, EMB, IUD, pathology, D&C, hysteroscopy) exclude rows
 #'   whose setting is explicitly inpatient;
 #' - a national row (state = "US") uses the same two stages over all units.
 
 outpatient_concepts <- function() {
-  base::c("colonoscopy", "emb", "iud_insertion", "iud_device", "surgical_pathology")
+  base::c(
+    "colonoscopy", "emb", "iud_insertion", "iud_device", "surgical_pathology",
+    "dc", "hysteroscopy_sampling"
+  )
 }
 
 state_medians_sql <- function(exclude_file_ids = NULL) {

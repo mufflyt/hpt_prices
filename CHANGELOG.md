@@ -2,6 +2,27 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-13 (D&C and hysteroscopy codes; vendor-URL cross-linking corrected)
+
+### Added
+- CPT 58120 (D&C) and 58558 (hysteroscopy with sampling). The national extract is now 7,746,760 rows
+  and the database 7,753,542 rates across 3,303 CCNs. Validation: 44 pass, 4 warn, 0 fail.
+- `R/payer_ratios.R`, `analysis/14_emb_payer_ratios.R`: within-hospital payer-to-Medicare ratios by
+  code and fee type, to replace emb_colonoscopy's provisional payer multipliers.
+
+### Fixed
+- `outpatient_concepts()` now includes `dc` and `hysteroscopy_sampling`, so explicitly inpatient
+  rows for them stay out of state medians (found by the ownership module).
+- Vendor-hosted reports were cross-linked to the wrong hospitals in builds before this one. 516
+  facilities publish through `apps.para-hcfs.com/PTT/FinalLinks/Reports.aspx?dbName=...`, 317
+  distinct URLs that collapse to 4 keys if the query string is dropped. The crosswalk used before
+  the `normalize_url_key()` fix dropped it, so the tracker URL tier bridged other hospitals' files
+  to about 300 CCNs. For example, Forrest City Medical Center (040019) showed a $564 colonoscopy
+  price from another hospital's file; its own file has only 88305 among our codes. The rebuilt
+  crosswalk links each facility to its own file. National medians barely moved (commercial 45378
+  $2,078 to $2,070; MS-DRG 621 $21,064 to $21,145), but hospital- and state-level values for
+  affected hospitals did.
+
 ## 2026-09-13 (national run, validation fixes, build 21x faster)
 
 ### Verified against the full Trilliant lake (snapshot 2026-07-21)
