@@ -51,3 +51,5 @@ drg_bariatric,619,MS-DRG,ms_drg,O.R. procedures for obesity with MCC,TRUE,FALSE
 drg_bariatric,620,MS-DRG,ms_drg,O.R. procedures for obesity with CC,TRUE,FALSE
 drg_bariatric,621,MS-DRG,ms_drg,O.R. procedures for obesity without CC/MCC,TRUE,FALSE
 surgical_pathology,88305,CPT,procedure,"Level IV surgical pathology, gross and microscopic examination",TRUE,TRUE
+dc,58120,CPT,procedure,"Dilation and curettage, diagnostic and/or therapeutic (nonobstetrical)",TRUE,TRUE
+hysteroscopy_sampling,58558,CPT,procedure,"Hysteroscopy with sampling (biopsy) of endometrium and/or polypectomy",TRUE,TRUE

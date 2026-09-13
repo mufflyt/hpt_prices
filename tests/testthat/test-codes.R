@@ -6,7 +6,7 @@ testthat::test_that("codebook loads with the expected concepts and no duplicates
     base::c(
       "colonoscopy", "emb", "iud_insertion", "iud_device",
       "vaginal_hysterectomy", "lavh", "drg_uterine_nonmalignant",
-      "bariatric_surgery", "drg_bariatric", "surgical_pathology"
+      "bariatric_surgery", "drg_bariatric", "surgical_pathology", "dc", "hysteroscopy_sampling"
     )
   )
   testthat::expect_true(base::all(base::c("58100", "58300", "45378", "G0121", "742", "743", "43775", "43644", "619", "88305") %in% codebook$code))
