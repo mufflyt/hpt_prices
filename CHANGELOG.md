@@ -81,9 +81,26 @@ Grouped by date. There is no package version.
     large systems.
 
 ### Added
+- `tools/`: the Trilliant download helpers, moved out of a session scratchpad so they can be run
+  on any machine. `trilliant_download.sh` resumes and optionally fetches parallel 1 GiB byte
+  ranges; the signed URL comes from `TRILLIANT_URL` and is never written to disk.
+  `etag_verify.py` checks the zip against the S3 multipart ETag. `fast_unzip.py` extracts at disk
+  speed with CRC checks and resume. `refresh_readme_figures.sh` copies the current figures into
+  `docs/figures/`.
+- `docs/trilliant_download.md` (getting the data onto a machine), `docs/appendix.md` (technical
+  appendix: sources, extraction, crosswalk, every cleaning rule with its evidence, medians, the
+  Medicare benchmark, known data issues, validation, reproducibility), `NEWS.md`
+  (plain-language highlights), and `docs/cleanup_impact.md` (before-and-after impact of today's
+  cleaning on the headline outputs).
+- README: target-code table brought up to date (bariatric, 88305, 58120, 58558, 99213), data
+  acquisition, a documentation index, and the main figures (the repository is private; the
+  figures are aggregates of Trilliant-derived data).
+- GitHub Actions (`.github/workflows/r-tests.yml`) runs the offline test suite with the DuckDB CLI
+  on every pull request and push to `main`.
 - `R/geo_figures.R`, `analysis/15_geographic_figures.R`: colonoscopy (45378) state maps of the
-  commercial, Medicaid, and Medicare Advantage rate relative to Medicare, and a ranked
-  state-median chart with within-state interquartile ranges. The Medicare benchmark is each
+  commercial, Medicaid, and Medicare Advantage rate relative to Medicare, and a state ranking
+  chart by Census region (2 x 2 panels, landscape) with commercial and Medicaid on each state's row
+  and within-state interquartile ranges. The Medicare benchmark is each
   hospital's OPPS payment (Addendum B rate x (0.6 x FY 2026 IPPS wage index + 0.4); critical
   access hospitals get the state rural wage index), not hospital-listed Medicare rates, which are
   thin and noisy by state. Maps are drawn with `mysterymaps::mysterymaps_geographic_map()`;
@@ -96,8 +113,11 @@ Grouped by date. There is no package version.
 ### Effect on other outputs
 - Payer-to-Medicare professional ratios for emb_colonoscopy: unchanged except commercial D&C
   (58120) 1.666 to 1.626 (66 hospitals, was 68).
-- Add-on model: conclusions unchanged (EMB at colonoscopy, commercial, +$115 per add-on,
-  break-even 16.4 added minutes; IUD at bariatric surgery negative for every payer).
+- Add-on model: no conclusion changes direction, but EMB at colonoscopy (commercial) falls from
+  +$149 to +$115 per add-on and its break-even from 20.9 to 16.3 added minutes (base 5), because the
+  colonoscopy price rose and the EMB rate fell. IUD at bariatric surgery is unchanged (-$1,234
+  commercial; negative for every payer). Full before-and-after table: `docs/cleanup_impact.md`,
+  against a rebuild of the pre-cleanup code (6de7ea8) from the same inputs.
 - Validation: 44 pass, 4 warn, 0 fail.
 
 ## 2026-09-13 (D&C and hysteroscopy codes; vendor-URL cross-linking corrected)
