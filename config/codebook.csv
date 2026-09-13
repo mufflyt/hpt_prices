@@ -53,3 +53,4 @@ drg_bariatric,621,MS-DRG,ms_drg,O.R. procedures for obesity without CC/MCC,TRUE,
 surgical_pathology,88305,CPT,procedure,"Level IV surgical pathology, gross and microscopic examination",TRUE,TRUE
 dc,58120,CPT,procedure,"Dilation and curettage, diagnostic and/or therapeutic (nonobstetrical)",TRUE,TRUE
 hysteroscopy_sampling,58558,CPT,procedure,"Hysteroscopy with sampling (biopsy) of endometrium and/or polypectomy",TRUE,TRUE
+office_visit_em,99213,CPT,procedure,"Office or other outpatient visit, established patient, low medical decision making",TRUE,FALSE
