@@ -482,23 +482,37 @@ state_rank_chart <- function(summary, payer_types = base::c("commercial", "medic
     dplyr::arrange(.data$panel, .data$median_price) |>
     dplyr::mutate(state_key = base::factor(.data$state_key, levels = base::unique(.data$state_key)))
 
+  # light bands on every other row so each state can be followed across to its
+  # dot; drawn from the same data as the points (a separate band layer would
+  # reorder the discrete axis)
+  data <- data |>
+    dplyr::group_by(.data$panel) |>
+    dplyr::mutate(band = base::rank(.data$median_price, ties.method = "first") %% 2L == 0L) |>
+    dplyr::ungroup()
+
   plot <- ggplot2::ggplot(data, ggplot2::aes(y = .data$state_key)) +
+    ggplot2::geom_tile(ggplot2::aes(x = 1000, fill = .data$band), width = Inf, height = 1, colour = NA) +
+    ggplot2::scale_fill_manual(values = base::c("TRUE" = "grey93", "FALSE" = "white"), guide = "none") +
     ggplot2::geom_segment(ggplot2::aes(x = .data$p25_price, xend = .data$p75_price, yend = .data$state_key),
-                          colour = "grey60", linewidth = 0.6) +
-    ggplot2::geom_point(ggplot2::aes(x = .data$medicare_opps), shape = 124, size = 2.6, colour = "grey35") +
-    ggplot2::geom_point(ggplot2::aes(x = .data$median_price, shape = .data$reliability), size = 1.9,
-                        colour = "#b2182b", fill = "#b2182b", stroke = 0.6) +
+                          colour = "grey55", linewidth = 0.9) +
+    ggplot2::geom_point(ggplot2::aes(x = .data$medicare_opps), shape = 124, size = 3.4, colour = "grey25") +
+    ggplot2::geom_point(ggplot2::aes(x = .data$median_price, shape = .data$reliability), size = 2.7,
+                        colour = "#b2182b", fill = "#b2182b", stroke = 0.9) +
     ggplot2::scale_shape_manual(values = base::c("5 or more hospitals" = 21, "Fewer than 5 hospitals" = 1), name = NULL) +
-    ggplot2::scale_y_discrete(labels = function(x) base::sub("__.*$", "", x)) +
+    ggplot2::scale_y_discrete(labels = function(x) base::sub("__.*$", "", x), expand = ggplot2::expansion(add = 0.7)) +
     ggplot2::scale_x_continuous(labels = scales::label_dollar(accuracy = 1), transform = "log10",
                                 breaks = base::c(250, 500, 1000, 2000, 4000, 8000)) +
     ggplot2::facet_wrap(ggplot2::vars(.data$panel), scales = "free_y", nrow = 1) +
     ggplot2::labs(x = "Negotiated facility rate (log scale)", y = NULL) +
-    ggplot2::theme_minimal(base_size = 9) +
+    ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
       panel.grid.major.y = ggplot2::element_blank(), panel.grid.minor = ggplot2::element_blank(),
-      legend.position = "bottom", strip.text = ggplot2::element_text(face = "bold", size = 10),
-      axis.text.y = ggplot2::element_text(size = 6.5)
+      panel.grid.major.x = ggplot2::element_line(colour = "grey85", linewidth = 0.3),
+      legend.position = "bottom", legend.text = ggplot2::element_text(size = 10),
+      strip.text = ggplot2::element_text(face = "bold", size = 12),
+      axis.text.y = ggplot2::element_text(size = 9.5, colour = "grey10", face = "bold"),
+      axis.text.x = ggplot2::element_text(size = 9.5, colour = "grey20"),
+      panel.spacing.x = ggplot2::unit(1.2, "lines")
     )
 
   if (!base::is.null(national)) {

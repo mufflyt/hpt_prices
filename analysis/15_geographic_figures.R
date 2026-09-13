@@ -100,13 +100,13 @@ save_figure(fig1, "geo1_colonoscopy_commercial_medicaid_maps", width = 12, heigh
 fig2 <- state_rank_chart(summary, payer_types = base::c("commercial", "medicaid"), national = national) +
   ggplot2::labs(
     title = "Colonoscopy (CPT 45378) facility rates: state median and within-state spread",
-    subtitle = "Dot: state median across hospitals. Bar: 25th to 75th percentile of hospitals. Grey tick: Medicare OPPS payment. Dashed: national median.",
+    subtitle = "Dot: state median across hospitals. Bar: 25th to 75th percentile of hospitals.\nGrey tick: Medicare OPPS payment. Dashed line: national median. States ranked within each payer.",
     caption = "Data: Trilliant Health Hospital MRF Data Directory (snapshot 2026-07-21); CMS OPPS Addendum B (July 2026); CMS FY 2026 IPPS Tables 2-3."
   ) +
-  ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 12),
-                 plot.subtitle = ggplot2::element_text(size = 8, colour = "grey30"),
-                 plot.caption = ggplot2::element_text(size = 7, colour = "grey30", hjust = 0))
-save_figure(fig2, "geo2_colonoscopy_state_ranks", width = 9, height = 8.5)
+  ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 14),
+                 plot.subtitle = ggplot2::element_text(size = 10, colour = "grey30", lineheight = 1.1),
+                 plot.caption = ggplot2::element_text(size = 8, colour = "grey30", hjust = 0))
+save_figure(fig2, "geo2_colonoscopy_state_ranks", width = 10, height = 12)
 
 # supplement: Medicare Advantage, which clusters at the Medicare rate (same colour scale as geo1)
 for (ext in base::c("png", "pdf")) {
@@ -132,7 +132,7 @@ supp4 <- state_rank_chart(summary, payer_types = "medicare_advantage", national 
   ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", size = 11),
                  plot.subtitle = ggplot2::element_text(size = 8, colour = "grey30"),
                  plot.caption = ggplot2::element_text(size = 7, colour = "grey30", hjust = 0))
-save_figure(supp4, "supp_geo4_colonoscopy_ma_state_ranks", width = 5.5, height = 8.5)
+save_figure(supp4, "supp_geo4_colonoscopy_ma_state_ranks", width = 6, height = 12)
 
 supp5 <- system_weighting_chart(weighting, payer_types) +
   ggplot2::labs(
