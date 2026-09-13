@@ -150,11 +150,11 @@ Several parameters are reused from `emb_colonoscopy config/model_parameters.csv 
 
 | Parameter | Case | Base | Range | Dist. | Dollar year to 2026 | Prov. | Source (short) |
 |---|---|---|---|---|---|---|---|
-| `colonoscopy_slot_minutes` | B | 55 min | 40 to 65 | triangular | | no | Almeida 2016 PMID 27446830; Soderberg 2023 PMID 36923210; Day 2014 PMID 24796958; Kidambi 2024 PMID 39411629 |
+| `colonoscopy_slot_minutes` | B | 55 min | 40 to 65 | triangular | | no | Almeida 2016 PMID 27446830; Soderberg 2023 PMID 36923210; Day 2014 PMID 24796958; Kidambi 2024 PMID 39411629; corroborated by ONCE (Frissora 2025) PMID 40821478 |
 | `sleeve_or_slot_minutes` | A | 145 min | 115 to 180 | triangular | | no | Clapp 2023 PMID 36752855 (MBSAQIP median 68 min operative); Sanford 2015 PMID 25802066; El Chaar 2023 PMID 37804468; Hoffman 2018 PMID 30518428 |
 | `bypass_or_slot_minutes` | A | 190 min | 160 to 265 | triangular | | no | Clapp 2023 (median 113 min); Inaba 2019 PMID 31128998; Sanford 2015 |
 | `iud_added_minutes_at_surgery` | A | 10 min | 5 to 20 | triangular | | **yes** | None found; O'Flynn O'Brien 2019 PMID 30633980 (office insertion 6-9 min) plus repositioning |
-| `combined_emb_added_minutes` | B | 5 min | 1 to 12 | triangular | | no | Huang 2011 PMC3014510 (reused) |
+| `combined_emb_added_minutes` | B | 5 min | 1 to 12 | triangular | | no | Huang 2011 PMC3014510 (reused); corroborated by ONCE (Frissora 2025) PMID 40821478 |
 | `or_block_minutes` | A | 480 min | 240 to 600 | fixed | | no | Pandit & Dexter 2009 PMID 19448221 |
 | `endoscopy_block_minutes` | B | 480 min | 240 to 600 | fixed | | no | Dexter, Epstein, Penning 2020 PMID 31195226; Day 2014 |
 | `utilization_A` | A | 0.25 | 0 to 0.75 | beta | | **yes** | Judgment; Dexter 1995 PMID 7486114; Dexter 2003 PMID 14500168; Alvarez 2019 PMID 29794842 |
@@ -186,6 +186,15 @@ Several parameters are reused from `emb_colonoscopy config/model_parameters.csv 
 | `patient_time_opportunity_cost_per_visit` | both | $43 | fixed | fixed | 2010 to $65.63 | **yes** | Ray 2015 PMID 26295356 (reused) |
 | `avoided_standalone_visits_A` / `_B` | A / B | 1 | 1 to 2 | triangular | | **yes** | Assumption |
 | `delay_days_per_displaced_case_A` / `_B` | A / B | 30 days | 7 to 90 | triangular | | **yes** | Assumption; wait-time context from Alvarez 2019, Eng 2019, Hubers 2020, Shim 2024 |
+
+**ONCE (Frissora et al. 2025, PMID 40821478).** This prospective study of combined screening in 20
+Lynch syndrome patients under propofol reports an average combined procedure time of 42 minutes (range
+27-59) and total OR time of 54 minutes (range 37-93) for a session of EMB, upper endoscopy when
+indicated, and colonoscopy, with the EMB performed first and "typically" taking under 10 minutes. It does
+not define OR time, report component times, or say how many patients had upper endoscopy. So it cannot
+narrow either input. It corroborates both: an EMB of under 10 minutes sits inside the 1-12 minute range
+(base 5, Huang 2011, n = 42), and a triple-screen session of 54 minutes bounds colonoscopy alone from
+above, consistent with the 40-65 minute slot including turnover. Base values and ranges are unchanged.
 
 CPI values are also rows in the table:
 - Medical Care: 2014 435.292, 2024 563.841, 2025 580.102 (BLS API v2, retrieved
