@@ -258,7 +258,7 @@ USD per add-on.
 | commercial | $21,154 | $211 | -$1,059 | $175 | **-$1,234** | -$1,390 | +$1,081 | 0.15 |
 | exchange | $19,439 | $160 | -$1,110 | $161 | **-$1,271** | -$1,442 | +$669 | 0.04 |
 | medicare | $12,907 | $0 | -$1,270 | $107 | **-$1,376** | -$1,601 | not covered | 0 |
-| medicare_advantage | $12,804 | $0 | -$1,270 | $106 | **-$1,376** | -$1,601 | not covered | 0 |
+| medicare_advantage | $12,809 | $0 | -$1,270 | $106 | **-$1,376** | -$1,601 | not covered | 0 |
 | medicaid | $12,436 | $0 | -$1,270 | $103 | **-$1,373** | -$1,601 | -$5 | 0 |
 | self_pay_cash | $22,314 | $198 | -$1,071 | $185 | **-$1,256** | -$1,403 | +$795 | 0.11 |
 
@@ -270,7 +270,7 @@ USD per add-on.
   dollars). Traditional Medicare never pays for it, and it is packaged in most DRG and
   case-rate contracts. Displacement adds only $100 to $190 per add-on.
 - **Sensitivity variants** are all negative nationally for every insurance type:
-  - DRG 620 (with CC): -$1,247 commercial, -$1,380 Medicaid.
+  - DRG 620 (with CC): -$1,250 commercial, -$1,380 Medicaid.
   - CPT 43775: -$1,139 commercial, -$1,284 Medicaid.
 - **States.** 0 of 55 states are net-positive for commercial or Medicaid, in any case
   A variant. In the full-rate scenario, 52 states are positive for commercial and 24
