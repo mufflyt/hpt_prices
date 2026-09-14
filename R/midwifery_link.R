@@ -70,7 +70,7 @@ load_zcta_county <- function(path = hpt_path("reference", "census_zcta", "tab20_
 load_midwife_roster <- function(path = base::file.path(midwifery_dir(), "artifacts", "tracked_roster_active_primary_linked.csv")) {
   readr::read_csv(path, col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE) |>
     dplyr::filter(.data$status == "ACTIVE", !base::is.na(.data$npi)) |>
-    dplyr::transmute(.data$npi, zip = stringr::str_sub(.data$nppes_zip, 1, 5), .data$certification) |>
+    dplyr::transmute(.data$npi, zip = stringr::str_sub(.data$nppes_zip, 1, 5), state = .data$nppes_state, .data$certification) |>
     dplyr::distinct(.data$npi, .keep_all = TRUE)
 }
 
@@ -85,15 +85,18 @@ load_birth_centers <- function(path = base::file.path(midwifery_dir(), "artifact
     dplyr::select("bc_id", "facility_name", "state", "zip")
 }
 
-#' County births, midwife counts, WONDER CNM share, and rurality
+#' County births, midwife and OB/GYN counts, WONDER CNM share, rurality,
+#' income, and uninsurance
 #'
 #' Births are NVSS natality counts (AHRF, the midwifery repository's
 #' `births_used`), the same system the cesarean rates come from; the ACS
 #' estimate fills the few counties without one.
+#' OB/GYNs are the AHRF county count (`ahrf_obgyn`).
 load_county_midwifery <- function(path = base::file.path(midwifery_dir(), "artifacts", "county_profiles", "county_cnm_births.csv"),
                                   supply_path = base::file.path(midwifery_dir(), "artifacts", "county_midwifery_supply.csv")) {
   supply <- readr::read_csv(supply_path, col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE) |>
-    dplyr::transmute(county_fips = .data$fips, births_nvss = base::as.numeric(.data$births_used))
+    dplyr::transmute(county_fips = .data$fips, births_nvss = base::as.numeric(.data$births_used),
+                     obgyn = base::as.numeric(.data$ahrf_obgyn))
   readr::read_csv(path, col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE) |>
     dplyr::left_join(supply, by = base::c(GEOID = "county_fips")) |>
     dplyr::transmute(
@@ -101,7 +104,9 @@ load_county_midwifery <- function(path = base::file.path(midwifery_dir(), "artif
       births = dplyr::coalesce(.data$births_nvss, base::as.numeric(.data$births_past_12mo)), n_cnm_cm = base::as.numeric(.data$n_cnm_cm),
       cnm_share_of_births_pct = base::as.numeric(.data$cnm_share_of_births_pct),
       wonder_county_reported = .data$wonder_county_reported == "TRUE",
-      rucc_2023 = base::as.integer(.data$rucc_2023)
+      rucc_2023 = base::as.integer(.data$rucc_2023),
+      obgyn = .data$obgyn, median_hh_income = base::as.numeric(.data$median_hh_income),
+      pct_uninsured = base::as.numeric(.data$pct_uninsured)
     )
 }
 
@@ -117,62 +122,24 @@ haversine_miles <- function(lat1, lon1, lat2, lon2) {
 #' Midwifery presence per hospital
 #'
 #' @param hospitals tibble(ccn, zip).
-hospital_midwifery_presence <- function(hospitals, zcta, zcta_county, midwives, birth_centers, counties, radius = 30) {
+#' @param uncovered roster_uncovered_zctas() rows, or NULL to skip the
+#'   roster-coverage check.
+hospital_midwifery_presence <- function(hospitals, zcta, zcta_county, midwives, birth_centers, counties, radius = 30,
+                                        uncovered = NULL) {
   located <- function(tbl) dplyr::inner_join(tbl, zcta, by = "zip")
   hosp <- hospitals |>
     dplyr::mutate(zip = stringr::str_sub(stringr::str_pad(.data$zip, 5, pad = "0"), 1, 5)) |>
     located() |>
     dplyr::left_join(zcta_county, by = "zip") |>
     dplyr::left_join(dplyr::select(counties, "county_fips", "cnm_share_of_births_pct", "wonder_county_reported", "rucc_2023"), by = "county_fips")
-  mw <- located(midwives)
-  bc <- located(dplyr::filter(birth_centers, !base::is.na(.data$zip)))
-  cty <- dplyr::filter(counties, !base::is.na(.data$lat), !base::is.na(.data$births))
-
-  rows <- base::lapply(base::seq_len(base::nrow(hosp)), function(i) {
-    h <- hosp[i, ]
-    d_mw <- haversine_miles(h$lat, h$lon, mw$lat, mw$lon)
-    d_bc <- if (base::nrow(bc) > 0) haversine_miles(h$lat, h$lon, bc$lat, bc$lon) else base::numeric()
-    d_cty <- haversine_miles(h$lat, h$lon, cty$lat, cty$lon)
-    in_radius <- d_cty <= radius | cty$county_fips %in% h$county_fips
-    tibble::tibble(
-      ccn = h$ccn,
-      cnm_within = base::sum(d_mw <= radius),
-      births_within = base::sum(cty$births[in_radius]),
-      bc_within = base::sum(d_bc <= radius),
-      nearest_bc_miles = if (base::length(d_bc)) base::min(d_bc) else NA_real_
-    )
-  })
-  dplyr::bind_rows(rows) |>
-    dplyr::mutate(cnm_per_1k_births = dplyr::if_else(.data$births_within > 0, 1000 * .data$cnm_within / .data$births_within, NA_real_)) |>
+  supply <- midwifery_supply_at(
+    dplyr::transmute(hosp, id = .data$ccn, .data$lat, .data$lon, .data$county_fips),
+    located(midwives), counties, radius = radius,
+    birth_centers = located(dplyr::filter(birth_centers, !base::is.na(.data$zip))), uncovered = uncovered
+  )
+  supply |>
+    dplyr::transmute(ccn = .data$id, .data$roster_covered, .data$cnm_within, .data$births_within, .data$bc_within, .data$nearest_bc_miles,
+                     .data$cnm_per_1k_births) |>
     dplyr::left_join(dplyr::select(hosp, "ccn", "zip", "lat", "lon", "county_fips", "cnm_share_of_births_pct",
                                    "wonder_county_reported", "rucc_2023"), by = "ccn")
-}
-
-#' County cesarean rates from a CDC WONDER natality export
-#'
-#' Expects the tab-delimited export of "Natality, 2016-2024 expanded" (or a
-#' later release) grouped by County and Delivery Method, with the default
-#' Notes block at the end. Counties under 100,000 residents come pooled by
-#' state ("Unidentified Counties", codes ending 999) and are dropped.
-#' Returns tibble(county_fips, births, cesarean_births, cesarean_rate).
-load_wonder_delivery_by_county <- function(path) {
-  lines <- base::readLines(path, warn = FALSE)
-  notes_at <- base::which(stringr::str_detect(lines, '^"?---'))[1]
-  if (!base::is.na(notes_at)) lines <- lines[base::seq_len(notes_at - 1L)]
-  tbl <- readr::read_tsv(base::I(base::paste(lines, collapse = "\n")), col_types = readr::cols(.default = readr::col_character()),
-                         show_col_types = FALSE)
-  base::names(tbl) <- stringr::str_squish(base::names(tbl))
-  # WONDER names it "County of Residence Code" (or "County Code" in older releases)
-  county_code <- base::grep("^County( of Residence)? Code$", base::names(tbl), value = TRUE)[1]
-  missing <- base::c(if (base::is.na(county_code)) "County of Residence Code", base::setdiff(base::c("Delivery Method", "Births"), base::names(tbl)))
-  if (base::length(missing)) base::stop("WONDER export lacks column(s): ", base::paste(missing, collapse = ", "))
-  tbl |>
-    dplyr::transmute(county_fips = stringr::str_pad(.data[[county_code]], 5, pad = "0"), method = .data$`Delivery Method`,
-                     births = base::suppressWarnings(base::as.numeric(.data$Births))) |>
-    dplyr::filter(!base::is.na(.data$births), !stringr::str_detect(.data$county_fips, "999$"),
-                  .data$method %in% base::c("Vaginal", "Cesarean")) |>
-    dplyr::group_by(.data$county_fips) |>
-    dplyr::summarise(cesarean_births = base::sum(.data$births[.data$method == "Cesarean"]), births = base::sum(.data$births),
-                     .groups = "drop") |>
-    dplyr::mutate(cesarean_rate = .data$cesarean_births / .data$births)
 }

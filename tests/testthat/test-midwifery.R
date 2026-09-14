@@ -32,17 +32,3 @@ testthat::test_that("birth center ZIPs come from the end of the address, not a s
                                   city = "x", zip_code = base::c("16802", "56401")), path)
   testthat::expect_equal(load_birth_centers(path)$zip, base::c("56353", "56401"))
 })
-
-testthat::test_that("WONDER delivery exports give county cesarean rates and drop pooled counties", {
-  path <- base::tempfile(fileext = ".txt")
-  base::writeLines(base::c(
-    '"Notes"\t"County of Residence"\t"County of Residence Code"\t"Delivery Method"\t"Delivery Method Code"\t"Births"',
-    '\t"Jefferson County, AL"\t"01073"\t"Vaginal"\t"1"\t"6000"',
-    '\t"Jefferson County, AL"\t"01073"\t"Cesarean"\t"2"\t"3000"',
-    '\t"Unidentified Counties, AL"\t"01999"\t"Vaginal"\t"1"\t"20000"',
-    '"---"', '"Dataset: Natality, 2016-2024 expanded"'
-  ), path)
-  rates <- load_wonder_delivery_by_county(path)
-  testthat::expect_equal(rates$county_fips, "01073")
-  testthat::expect_equal(rates$cesarean_rate, 1 / 3)
-})

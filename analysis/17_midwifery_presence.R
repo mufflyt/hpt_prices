@@ -16,11 +16,11 @@
 #' from the wild cluster restricted bootstrap clustered by state
 #' (wild_cluster_bootstrap() in R/ownership.R). Associations, not effects:
 #' where midwives practice is not random.
+#' The midwife roster covers 40 states; hospitals whose catchment reaches an
+#' uncovered state have no exposure (roster_uncovered_zctas()).
 #'
-#' County cesarean rates: if a CDC WONDER natality export by county and
-#' delivery method is at HPT_WONDER_DELIVERY (default
-#' reference/cdc_wonder/natality_delivery_by_county.txt), the script adds
-#' the county cesarean rate as an outcome against the same exposures.
+#' County NTSV cesarean rates against midwife supply are in
+#' analysis/18_ntsv_midwife_supply.R.
 #'
 #' Writes to HPT_DATA_DIR/output/ (never committed): midwifery_presence_hospital.csv,
 #' midwifery_tertile_summary.csv, midwifery_price_models.csv, and
@@ -44,12 +44,16 @@ beds <- readr::read_csv(hpt_path("reference", "hospital_universe.csv"), col_type
   dplyr::transmute(ccn = .data$facility_id, beds = base::suppressWarnings(base::as.numeric(.data$hos_beds)))
 
 download_zcta_files()
+zcta <- load_zcta_centroids()
+zcta_county <- load_zcta_county()
+roster <- load_midwife_roster()
 presence <- hospital_midwifery_presence(
   dplyr::filter(hospitals, .data$ccn %in% base::union(ratios$ccn, premium$ccn)) |> dplyr::select("ccn", "zip"),
-  load_zcta_centroids(), load_zcta_county(), load_midwife_roster(), load_birth_centers(), load_county_midwifery(),
-  radius = radius
+  zcta, zcta_county, roster, load_birth_centers(), load_county_midwifery(),
+  radius = radius, uncovered = roster_uncovered_zctas(zcta, zcta_county, roster)
 )
-base::message("Midwifery presence for ", base::nrow(presence), " delivery hospitals (radius ", radius, " miles)")
+base::message("Midwifery presence for ", base::nrow(presence), " delivery hospitals (radius ", radius, " miles); ",
+              base::sum(!presence$roster_covered), " excluded because the catchment reaches a state the roster does not cover")
 
 covariates <- hospitals |>
   dplyr::left_join(beds, by = "ccn") |>
@@ -138,22 +142,6 @@ if (base::nrow(share) > 50) {
 }
 write_csv_atomic(models, base::file.path(out_dir, "midwifery_price_models.csv"))
 base::print(dplyr::select(models, "outcome", "spec", "term", "pct", "ci_low_pct", "ci_high_pct", "p_value", "n_hospitals"), n = 60)
-
-# ---- county cesarean rates (CDC WONDER export, when present) ----------------------
-
-wonder_path <- base::Sys.getenv("HPT_WONDER_DELIVERY", unset = hpt_path("reference", "cdc_wonder", "natality_delivery_by_county.txt"))
-if (base::file.exists(wonder_path)) {
-  delivery <- load_wonder_delivery_by_county(wonder_path)
-  county_outcome <- analysis |>
-    dplyr::inner_join(delivery, by = "county_fips") |>
-    dplyr::transmute(.data$ccn, .data$state, .data$county_fips, outcome = "county cesarean rate", value = .data$cesarean_rate,
-                     .data$cnm_tertile, .data$log2_cnm, .data$birth_center, .data$hospital_type, .data$system,
-                     .data$ownership, .data$log_beds, .data$metro)
-  write_csv_atomic(county_outcome, base::file.path(out_dir, "midwifery_county_cesarean.csv"))
-  base::print(fit_terms(county_outcome, base::paste("log2_cnm + birth_center +", adjust), "log2_cnm"))
-} else {
-  base::message("No CDC WONDER delivery-method export at ", wonder_path, "; county cesarean rates skipped.")
-}
 
 # ---- figure ---------------------------------------------------------------------
 

@@ -1,9 +1,9 @@
-# Childbirth analytic specification (design lock, draft)
+# Childbirth analytic specification (design lock)
 
-Status: design only. This file makes no empirical claims. The code on
-`feat/childbirth-prices` (prices, per-diem conversion, midwifery presence)
-is scaffolding, and its outputs are exploratory. There are no CDC-derived
-numbers in the repository.
+Status: design approved 2026-09-14. The amendments made while implementing
+it are listed at the end. This file makes no empirical claims, and there are
+no CDC-derived numbers in the repository. Code: `R/ntsv_county.R` and
+`analysis/18_ntsv_midwife_supply.R`.
 
 **Causal chain under study:** midwifery supply → NTSV cesarean utilization
 → implied facility price consequences. Prices enter only in the last step,
@@ -14,11 +14,18 @@ as an accounting translation.
 **Midwife supply per 1,000 births.** The numerator is active AMCB-certified
 midwives (CNM and CM) from the NPI-linked roster
 (`tracked_roster_active_primary_linked.csv`), placed at their NPPES practice
-ZIP. The count covers midwives within 30 miles of the unit's
-population-weighted centroid. The denominator is NVSS resident births in the
-same catchment. Sensitivity radii are 15 and 60 miles. Secondary exposures:
+ZIP. The count covers midwives within 30 miles of the county's 2020 Census
+center of population. The denominator is NVSS resident births of the counties
+whose centers lie in the same catchment. The model uses
+log2(midwives per 1,000 births + 0.5), as in `analysis/17`. Sensitivity radii are 15 and 60 miles. Secondary exposures:
 a CABC-accredited birth center within 30 miles, and distance to the nearest
 one.
+
+**Roster coverage.** The NPI-linked tracked roster covers 40 states. It
+leaves out AK, DC, DE, HI, ND, NJ, RI, SD, VT, WV, and WY. A catchment that
+reaches any ZIP (ZCTA) in those states would count their midwives as zero, so
+its exposure is set to missing instead (`roster_uncovered_zctas()`). The
+national linkage freeze would remove this restriction.
 
 **Excluded as an exposure: the CNM-attended share of births.** Birth
 certificates name the delivering attendant, and cesareans are attended by
@@ -76,16 +83,17 @@ Rural findings rest on the state analysis.
 
 **Utilization model.** County of residence, with NTSV births pooled over
 the study years:
-- Binomial model (quasi-binomial or beta-binomial if overdispersed),
-  weighted by NTSV births.
-- State fixed effects.
-- Wild cluster restricted bootstrap by state, using the existing
-  `wild_cluster_bootstrap()`.
+- Primary: a linear model of the NTSV cesarean rate in percentage points,
+  weighted by NTSV births, with state fixed effects.
+- Inference: the wild cluster restricted bootstrap by state, using the
+  existing `wild_cluster_bootstrap()`.
+- Sensitivity: a quasi-binomial logit with CR1 errors clustered by state.
 
 **Price step.** Hospital, only to describe the local facility price
 differential: the negotiated price for DRG 788 (cesarean) minus DRG 807
-(vaginal), by payer, averaged over L&D hospitals serving the county. There is
-no hospital-level causal model.
+(vaginal), by payer. For each county it is the median over hospitals within
+30 miles of the county's center of population that list both prices, or the
+state median when none do. There is no hospital-level causal model.
 
 ## 5. Year alignment
 
@@ -115,8 +123,10 @@ counted in local supply.
 **Robustness checks:**
 - MAUP: radii of 15, 30, and 60 miles, and county versus state units.
 - The placebo outcome from section 5.
-- A negative-control outcome: preterm birth share. Midwife supply should
-  have little effect on it; an association would point to confounding.
+- A negative-control outcome: the multiple-birth (twin or more) share of
+  all births. It tracks maternal age, fertility treatment, and income, but
+  midwife supply cannot plausibly change it. An association would point to
+  confounding.
 
 **The price step is arithmetic, not an estimate.** Implied facility price
 consequence = estimated change in NTSV cesarean rate x NTSV births x local
@@ -129,15 +139,16 @@ fees, downstream care, repeat cesareans, and outcomes.
 | Confounder | Source | Status |
 |---|---|---|
 | Parity | NTSV definition (first births only) | Handled by design |
-| Maternal age | WONDER Age of Mother, direct age standardization | Available (query) |
-| Race and Hispanic origin | WONDER Mother's Single Race 6, Hispanic Origin | Available (query); suppression risk |
-| Payer mix | WONDER Source of Payment for Delivery; hospital Medicaid days from HCRIS | County available (query); HCRIS not loaded |
-| Clinical risk | WONDER pre-pregnancy BMI, pre-pregnancy and gestational diabetes and hypertension | Available (query) |
+| Maternal age | WONDER Age of Mother 9: shares 35+ and under 20 | Export |
+| Race and Hispanic origin | WONDER Mother's Hispanic Origin x Single Race 6: Hispanic, NH Black, NH Asian shares | Export |
+| Payer mix | WONDER Source of Payment for Delivery: Medicaid share | Export |
+| Clinical risk | WONDER Pre-pregnancy BMI (obesity share); gestational hypertension and diabetes (extended model) | Export |
+| Income, uninsurance | ACS median household income (log), % uninsured | Loaded |
 | Rurality | RUCC 2023 | Loaded |
 | State | Fixed effects | Available |
 | Birth volume | NVSS resident births | Loaded |
-| Regional obstetric supply | L&D hospitals within the radius (CMS SM-7) | Loaded; not yet aggregated to county |
-| Obstetrician supply | NPPES taxonomy 207V or AHRF | Not built |
+| Regional obstetric supply | L&D hospitals within the radius per 1,000 births (CMS SM-7) | Built |
+| Obstetrician supply | AHRF county OB/GYN counts within the radius per 1,000 births (log2) | Built |
 | MFM supply | NPPES taxonomy 207VM0101X | Not built |
 | System ownership, PE | AHRQ CHSP, `pe_hospital_systems` | Loaded (hospital level) |
 | Hospital type | CMS roster | Loaded (hospital level) |
@@ -161,23 +172,61 @@ bed size) enter only through a county's hospitals as descriptors.
 - There is no existing repository extract. The midwifery repo holds only
   CNM-attended births by county.
 
-So a manual WONDER web export is required, archived with its query URL, the
-Notes block, and a sha256 hash. The query is the same for every export;
-only the "Group Results By" choice changes:
+So manual WONDER web exports are required. The analysis records each
+export's sha256, dataset, and query date, and it checks that the Notes block
+shows the NTSV filters. Every export uses these settings:
 
 - **Dataset:** Natality, 2016-2024 expanded.
-- **Group Results By:** County of Residence, then Delivery Method.
-  - State of Residence instead, for the state file.
-  - Add Age of Mother or Payment Source for the stratified files.
-- **Years:** 2022, 2023, 2024. A second export covers 2016-2019 for the
-  placebo.
-- **Live Birth Order:** 1.
-- **Plurality:** Single.
-- **OE Gestational Age:** every category at 37 weeks or later (term, late term, post
-  term).
-- **Fetal Presentation:** Cephalic.
-- **Delivery Method:** all values (unknown is dropped in code).
-- **Other options:** show totals, show zero values, show suppressed values;
+- **NTSV filters:**
+  - Live Birth Order = "1st child born alive to mother";
+  - Plurality = "Single";
+  - OE Gestational Age Recode 11 = "37-38 weeks", "39 weeks", "40 weeks",
+    "41 weeks", "42 or more weeks";
+  - Fetal Presentation = "Cephalic".
+- **Options:** show totals, show zero values, show suppressed values;
   export as tab-delimited.
 
-`load_wonder_delivery_by_county()` already reads this layout.
+Save each file under `reference/cdc_wonder/` with the name below
+(`wonder_ntsv_exports()` holds the same list):
+
+| File | Group by | Years | NTSV filters | Role |
+|---|---|---|---|---|
+| `ntsv_county_2022_2024.txt` | County of Residence; Delivery Method | 2022-2024 | yes | required |
+| `ntsv_state_2022_2024.txt` | State of Residence; Delivery Method | 2022-2024 | yes | required |
+| `ntsv_county_2016_2019.txt` | County of Residence; Delivery Method | 2016-2019 | yes | required (placebo) |
+| `ntsv_county_age_2022_2024.txt` | County of Residence; Age of Mother 9 | 2022-2024 | yes | required |
+| `ntsv_county_payment_2022_2024.txt` | County of Residence; Source of Payment for Delivery | 2022-2024 | yes | required |
+| `ntsv_county_race_2022_2024.txt` | County of Residence; Mother's Hispanic Origin; Mother's Single Race 6 | 2022-2024 | yes | required |
+| `ntsv_county_bmi_2022_2024.txt` | County of Residence; Mother's Pre-pregnancy BMI | 2022-2024 | yes | required |
+| `ntsv_county_hypertension_2022_2024.txt` | County of Residence; Gestational Hypertension | 2022-2024 | yes | extended |
+| `ntsv_county_diabetes_2022_2024.txt` | County of Residence; Gestational Diabetes | 2022-2024 | yes | extended |
+| `births_county_plurality_2022_2024.txt` | County of Residence; Plurality | 2022-2024 | no | negative control |
+
+**Suppression.** Cells of 1-9 births are never read as zero. Each rate or
+share uses 5 for a suppressed cell and is set to missing when moving that
+cell anywhere from 1 to 9 would shift it by more than 1 percentage point.
+
+## Amendments made during implementation (2026-09-14)
+
+1. **Negative control.** The multiple-birth share replaces the preterm
+   share. Trials of midwife-led continuity of care report fewer preterm
+   births, so preterm birth is not a clean negative control.
+2. **Primary model.** A births-weighted linear model in percentage points
+   replaces the binomial model. The wild cluster bootstrap is defined for
+   linear models, and the percentage-point slope feeds the price
+   arithmetic directly. The quasi-binomial logit stays as a sensitivity
+   analysis.
+3. **Covariates as composition.** Maternal age, race, payer, and BMI enter
+   as shares of each county's NTSV births, not through direct
+   standardization. Stratum-specific rates would run into suppression.
+4. **Obstetrician supply.** This comes from AHRF county counts, which are
+   already loaded, not from NPPES.
+5. **Race and Hispanic origin.** WONDER has no combined race and Hispanic
+   variable, so the export groups by both.
+6. **Roster coverage.** Catchments that reach the 11 jurisdictions missing
+   from the roster get a missing exposure. The state model uses only the
+   covered states.
+7. **Payer split of the price arithmetic.** The commercial differential
+   applies to privately insured NTSV births and the Medicaid differential to
+   Medicaid births. The arithmetic covers only counties with a measured
+   exposure.
