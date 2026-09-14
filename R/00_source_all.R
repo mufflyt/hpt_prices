@@ -55,6 +55,7 @@ source_files <- c(
   "validation.R",
   "geo_figures.R",
   "birth_prices.R",
+  "midwifery_link.R",
   "summaries.R",
   "pipeline.R"
 )
