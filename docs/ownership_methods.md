@@ -36,7 +36,7 @@ PE flag picks up, are a separate group and have too few prices to estimate.
 | CMS Hospital General Information (roster, `dim_hospital`) | downloaded 2026-09-12 | hospital type, roster ownership |
 | AHRQ Compendium of US Health Systems, 2023 hospital linkage | 2023 | health system (cluster), beds |
 | Kim et al. (2026) PE hospital deal list | GitHub `sungilkim94/Kim-PE-Data` commit `d1796fd`, downloaded 2026-09-13 to `reference/kim_pe_deals/` with provenance | cross-check only |
-| `hpt.duckdb` | final build of 2026-09-13 (after the fee-type, case-line, and file-state validation fixes): 8,301,406 rates, 4,003 files, 3,362 CCNs | negotiated rates |
+| `hpt.duckdb` | build of 2026-09-13 with per-diem DRG conversion (after the fee-type, case-line, and file-state validation fixes): 11,499,113 rates, 4,016 files, 3,371 CCNs | negotiated rates |
 
 ### Public PE-hospital datasets checked
 

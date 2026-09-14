@@ -8,6 +8,9 @@ methods documents and are only summarized here:
   surgery, endometrial biopsy at colonoscopy) worth the primary capacity it displaces?
 - [`docs/ownership_methods.md`](ownership_methods.md): do private-equity-owned hospitals post
   different prices?
+- [`docs/childbirth_methods.md`](childbirth_methods.md): delivery prices relative to Medicare, the
+  cesarean-vaginal facility price differential, and midwifery supply (section M). The NTSV
+  cesarean design is locked in [`docs/childbirth_analytic_spec.md`](childbirth_analytic_spec.md).
 
 Acquiring the Trilliant file is covered in [`docs/trilliant_download.md`](trilliant_download.md).
 
@@ -29,6 +32,7 @@ rates stay on the data drive (section A).
 - [J. Known data issues and caveats](#j-known-data-issues-and-caveats)
 - [K. Validation summary](#k-validation-summary)
 - [L. Reproducibility](#l-reproducibility)
+- [M. Childbirth prices and midwifery supply](#m-childbirth-prices-and-midwifery-supply)
 
 ## A. Data sources and terms
 
@@ -123,8 +127,8 @@ name, address, license, and NPI, never by CCN. Tiers, first success wins:
 
 When a URL match and an NPI match disagree, the row is flagged `ccn_conflict`. The database bridge
 keeps unambiguous matches only, one row per (file, CCN), and only roster CCNs. CCNs linked per tier
-(a CCN can be reached by more than one file): URL 2,786, name/address 523, NPI 161. In total
-3,362 of 5,419 roster CCNs (62%) have prices.
+(a CCN can be reached by more than one file): URL 2,794, name/address 521, NPI 165. In total
+3,371 of 5,419 roster CCNs (62%) have prices.
 
 **URL normalization and the para-hcfs lesson.** `normalize_url_key()` lowercases the host, drops the
 scheme and trailing slash, and decodes `%20`. Whether it drops the query string depends on the path:
@@ -160,7 +164,9 @@ check (section K).
 
 `analysis/09_build_database.R`, `R/duckdb_store.R`. `hpt.duckdb` is a star schema written by the
 DuckDB CLI in v1.4.0 storage format, so the R duckdb package can read it. The build takes about
-4 minutes. Current size: 8,301,406 rates, 4,003 files, 57,675 payer/plan strings, 3,362 CCNs.
+4 minutes. Current size: 11,499,113 rates, 4,016 files, 58,114 payer/plan strings, 3,371 CCNs, 79
+codes. The delivery DRG and obstetric CPT codes added on 2026-09-13 account for the growth from
+8,301,406 rates (section M).
 
 | Table | Grain |
 |---|---|
@@ -253,6 +259,35 @@ otherwise NULL. Matched files take the state from the CMS roster.
   `files_rates_above_gross.csv`);
 - own-crawl files that duplicate a Trilliant file (`cross_source_duplicate_file_ids()`).
 
+**E9. Per-diem MS-DRG rates** (`per_diem_case_multiple()`, `per_diem_note()`). A per-diem contract
+prices one day of an inpatient stay. A hospital paid per diem therefore looked several times
+cheaper than one paid by case rate for the same DRG.
+- **Conversion.** At load, a per-diem rate for any MS-DRG becomes a stay price: `case_dollar` =
+  rate x the DRG's geometric mean length of stay (CMS FY 2026 IPPS Table 5), and
+  `per_diem_converted` marks the row.
+- **Mislabeled per diem.** Following Turquoise Health's delivery-price method, a "per diem" rate at
+  or above 3x Medicare's national per-day payment for the DRG is taken as a stay price and not
+  multiplied; `per_diem_as_case` marks it. The per-day payment is the standard IPPS payment at wage
+  index 1, divided by the length of stay.
+- **Where the prices live.** `negotiated_dollar` keeps the listed rate. Medians, payer ratios, and
+  ownership prices use `case_dollar`, which equals `negotiated_dollar` on every other row.
+
+| Concept | Converted | Kept as stay price | Files with per-diem rows / files |
+|---|---|---|---|
+| Vaginal delivery DRGs | 13,309 | 2,797 | 658 / 2,694 |
+| Cesarean DRGs | 12,612 | 4,020 | 622 / 2,692 |
+| DRG 742/743 uterine | 5,422 | 459 | 497 / 2,725 |
+| DRG 619-621 bariatric | 6,207 | 281 | 394 / 2,488 |
+
+**Effect on the headline numbers.**
+- National commercial DRG 742 rose from $24,361 to $25,133, and Medicaid from $14,443 to $14,525.
+- DRG 621 did not move for commercial, Medicaid, or Medicare.
+- The add-on model's DRG 620 variant moved by $3 (section F; `docs/addon_methods.md`).
+- One more hospital entered several Medicaid cells in the same rebuild (colonoscopy, D&C,
+  hysteroscopy, and DRG 621). The cause was not isolated, since the earlier build's outputs were
+  overwritten. It moved the national colonoscopy Medicaid ratio from 0.778x to 0.781x and the
+  ownership model's Medicaid and DRG 621 estimates by at most 2 percentage points.
+
 ## F. Three-stage medians
 
 `analysis/11_state_medians.R`, `R/state_medians.R`.
@@ -273,8 +308,8 @@ bariatric lines are partial). National facility medians:
 | 45378 colonoscopy | $2,220 | $753 | $958 | $954 | $1,993 |
 | 58100 EMB | $396 | $164 | $201 | $205 | $291 |
 | 58300 IUD insertion | $417 | $153 | (not covered) | (not covered) | $266 |
-| MS-DRG 621 bariatric | $21,154 | $12,436 | $12,907 | $12,804 | $22,314 |
-| MS-DRG 742 uterine | $24,361 | $14,443 | $15,504 | $15,304 | $25,052 |
+| MS-DRG 621 bariatric | $21,154 | $12,436 | $12,907 | $12,809 | $22,314 |
+| MS-DRG 742 uterine | $25,133 | $14,525 | $15,521 | $15,345 | $24,857 |
 
 ## G. Payer-to-Medicare ratios
 
@@ -378,7 +413,7 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
   and appears to be a genuine market feature.
 - **Critical access hospitals** get a state rural wage index in the benchmark (section H); their
   real Medicare payment is cost-based.
-- **Coverage.** 62% of roster CCNs have prices (3,362 of 5,419). Coverage is thinnest in Puerto Rico
+- **Coverage.** 62% of roster CCNs have prices (3,371 of 5,419). Coverage is thinnest in Puerto Rico
   (7%), DC (20%), Maryland (34%), Louisiana (44%), and Rhode Island (46%). VA and DoD hospitals are
   exempt from the rule.
 - **ConnectiCare rule edge case.** One plan, "EMBLEM HEALTH MEDICAID / CCMC HB CONNECTICARE REIMB
@@ -390,6 +425,14 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
 - **Codes only in descriptions** or CDM/local columns are missed by design.
 - **Rates above gross** remain in 6.6% of rates that carry a gross charge (validation warning); the
   35 files where most rates exceed gross are excluded from medians.
+- **APR-DRG-only inpatient prices are missed.** Code-type gating never lets an APR-DRG match an
+  MS-DRG. So a hospital that posts delivery, hysterectomy, or bariatric prices only as APR-DRGs
+  (common where Medicaid pays by APR-DRG) has no DRG price here.
+- **Per-diem threshold** (E9). A per-diem rate just under 3x the Medicare per-day payment is
+  multiplied even if it is really a mislabeled stay price.
+- **Midwife roster coverage.** The NPI-linked AMCB roster read from the midwifery repository covers
+  40 states. Midwifery exposures are missing, not zero, wherever a catchment reaches AK, DC, DE,
+  HI, ND, NJ, RI, SD, VT, WV, or WY (section M).
 
 ## K. Validation summary
 
@@ -450,6 +493,9 @@ pipeline failed on any machine without the drive. It now runs only when `HPT_DAT
 | Ownership | `analysis/13_ownership_prices.R` | about 5 min (wild cluster bootstrap) |
 | Payer ratios | `analysis/14_emb_payer_ratios.R` | seconds |
 | Geographic figures | `analysis/15_geographic_figures.R` | about 30 s |
+| Childbirth prices | `analysis/16_childbirth_prices.R` | about 1 min |
+| Midwifery presence | `analysis/17_midwifery_presence.R` | about 5 min (wild cluster bootstrap) |
+| NTSV and midwife supply | `analysis/18_ntsv_midwife_supply.R` | minutes; needs the CDC WONDER exports (section M) |
 
 Run the median-dependent steps (11, 12, 14) after any rebuild, and step 10 last. DuckDB is capped at
 5 GB and 3 threads and spills to `HPT_DATA_DIR/duckdb_tmp`.
@@ -462,6 +508,40 @@ Run the median-dependent steps (11, 12, 14) after any rebuild, and step 10 last.
 - GitHub Actions runs the suite on the public code copy, installing the R packages and the DuckDB
   CLI. Actions is turned off in this private repository.
 
+**Smoke tests.** `tools/smoke_ntsv.R` runs `analysis/18` end to end on synthetic WONDER exports
+in a temporary data folder whose other inputs are symlinks to the real ones (about 1 minute).
+
 **Publishing a code change.** Merge here first. Then run
 `tools/export_public.sh ~/hpt_prices_public`, review the diff in that clone, commit, and push. The
 copy's CI runs on the push.
+
+## M. Childbirth prices and midwifery supply
+
+Full methods: [`docs/childbirth_methods.md`](childbirth_methods.md). Design of the NTSV analysis:
+[`docs/childbirth_analytic_spec.md`](childbirth_analytic_spec.md).
+
+- **Codes.** Facility prices are MS-DRGs 783-788 (cesarean) and 796-798 and 805-807 (vaginal),
+  anchored on 788 and 807. Physician fees are CPT 59400-59622.
+- **Hospitals.** Only hospitals with a labor and delivery unit count (CMS SM-7 not "Not
+  Applicable"; no psychiatric hospitals or Rural Emergency Hospitals). 1,602 have a delivery price.
+- **Benchmark.** The standard FY 2026 IPPS payment for the DRG at the hospital's wage index
+  (operating plus capital, Tables 1A-1E, 2, 3, and 5). It leaves out the IME, DSH, outlier, and
+  quality adjustments. Hospital-listed Medicare delivery rates run 1.14x-1.18x this benchmark.
+- **Headline.** Commercial DRG 807 is $8,584 (1.72x Medicare) and DRG 788 $12,465 (1.74x);
+  Medicaid is $5,396 (1.08x) and $7,643 (1.10x). Within hospitals, the cesarean price is 1.42x the
+  vaginal price for both payers, exactly the ratio of Medicare's DRG weights.
+- **Language.** The cesarean-vaginal gap is a facility price differential, not savings or value.
+- **Midwifery presence** (`analysis/17`, exploratory):
+  - Exposure: midwives within 30 miles per 1,000 births within 30 miles.
+  - Result: no association with delivery prices or the premium. The high tertile's commercial
+    price is +3.2% (-8.7% to +16.6%).
+  - Coverage: the 40-state roster, with the coverage guard.
+- **NTSV cesareans** (`analysis/18`):
+  - County-of-residence NTSV rates from manual CDC WONDER exports (`wonder_ntsv_exports()`).
+  - Model: births-weighted linear, state fixed effects, wild cluster bootstrap.
+  - Checks: placebo and negative-control outcomes.
+  - Price step: the implied facility price differential by payer.
+  - Status: the code is tested and smoke-tested; waiting on the exports.
+- **Reference point.** Turquoise Health's delivery-price study (commercial only) is compared in
+  [`docs/turquoise_pricepoints.md`](turquoise_pricepoints.md). Its replication data is not
+  downloadable.

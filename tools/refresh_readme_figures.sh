@@ -25,6 +25,11 @@ figures=(
   supp_geo3_colonoscopy_medicare_advantage_map
   supp_geo4_colonoscopy_ma_state_ranks
   supp_geo5_colonoscopy_system_weighting
+  birth1_vaginal_ranks
+  birth1_cesarean_ranks
+  birth2_cesarean_premium
+  birth3_vaginal_maps
+  birth4_midwifery_presence
 )
 for f in "${figures[@]}"; do
   [ -f "$src/$f.png" ] || { echo "missing $src/$f.png" >&2; exit 1; }

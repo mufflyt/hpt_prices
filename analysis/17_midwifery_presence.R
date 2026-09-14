@@ -158,7 +158,11 @@ fig <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$cnm_tertile, y = .data$
     subtitle = base::sprintf("Tertiles of CNMs/CMs within %s miles per 1,000 births within %s miles (cut points %.2f and %.2f).",
                              radius, radius, tertile_cuts[1], tertile_cuts[2]),
     x = "Midwifery presence tertile", y = NULL,
-    caption = "Prices: Trilliant Health Hospital MRF Data Directory (snapshot 2026-07-21). Midwives: AMCB-certified, NPPES practice ZIP. Births: NVSS (AHRF)."
+    caption = base::paste0(
+      "Prices: Trilliant Health Hospital MRF Data Directory (snapshot 2026-07-21). Midwives: AMCB-certified, NPPES practice ZIP. Births: NVSS (AHRF).\n",
+      "The midwife roster covers 40 states; ", base::sum(!presence$roster_covered, na.rm = TRUE),
+      " hospitals whose ", radius, "-mile area reaches AK, DC, DE, HI, ND, NJ, RI, SD, VT, WV, or WY are left out."
+    )
   ) +
   ggplot2::theme_minimal(base_size = 11) +
   ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"), strip.text = ggplot2::element_text(face = "bold"),

@@ -3,6 +3,39 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-14 (what a birth costs, and the midwifery question, designed properly)
+
+**What hospitals charge for a birth.** For an uncomplicated vaginal delivery, commercial insurers
+pay a median of $8,584, 1.72 times what Medicare's standard formula would pay the same hospital.
+Medicaid pays $5,396, 1.08 times Medicare. A cesarean runs $12,465 commercial and $7,643 Medicaid.
+This covers 1,602 hospitals that deliver babies.
+
+**The cesarean always costs about 42% more, and it looks set by formula.** Inside a hospital, the
+cesarean price is 1.42 times the vaginal price for both commercial and Medicaid, and higher at 96%
+of hospitals. That is exactly the ratio of Medicare's own weights for the two DRGs, which suggests
+most contracts are written as multiples of Medicare's weights. We call the gap a facility price
+differential, not savings: it leaves out physician fees, later care, and outcomes.
+
+**Per-diem contracts are now priced as a stay.** Some hospitals price inpatient care per day, so
+they looked several times cheaper than hospitals paid per case. Those rates are now multiplied by
+Medicare's typical length of stay, unless they are already stay-sized. This moved the national
+commercial price for non-cancer uterine surgery (DRG 742) from $24,361 to $25,133 and barely
+touched anything else.
+
+**Midwives and hospital prices: no link.** Hospitals surrounded by more midwives do not charge
+differently for births, and their cesarean premium is the same. That was always the weaker
+question: prices are contracts, not how often cesareans happen.
+
+**The better question now has a locked design.** Do places with more midwives have fewer
+first-time, low-risk cesareans (the NTSV rate)? What would that difference mean for facility
+prices? The plan is in `docs/childbirth_analytic_spec.md`, and the code is written and tested. The
+county birth data can only come from CDC WONDER's website, so the last step is ten manual exports.
+The analysis stops and prints the exact query for any that are missing.
+
+**A mistake caught in the midwife counts.** The midwife list covers 40 states. Hospitals near the
+other 11 (including New Jersey, Delaware, and Rhode Island) were counted as having no midwives
+across the border. They are now left out instead of miscounted.
+
 ## 2026-09-13 (the code goes public; the data stays private)
 
 **The pipeline's code now has a public home.** github.com/mufflyt/hpt_prices_public holds the code,

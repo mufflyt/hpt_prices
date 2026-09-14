@@ -2,6 +2,81 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-14 (childbirth prices; per-diem DRG conversion; midwifery supply and the NTSV design)
+
+### Added
+- **Delivery codes** in `config/codebook.csv`, validated against the RVU26D fee schedule:
+  - MS-DRGs 783-788 (`drg_cesarean`, anchor 788) and 796-798 and 805-807 (`drg_vaginal_delivery`,
+    anchor 807);
+  - CPT 59400-59622 (`vaginal_delivery_cpt`, `cesarean_cpt`).
+  - The database grew from 8,301,406 to 11,499,113 rates, from 4,003 to 4,016 files, and from 3,362
+    to 3,371 CCNs.
+- **`R/birth_prices.R` and `analysis/16_childbirth_prices.R`: childbirth prices.**
+  - Medicare benchmark: the FY 2026 IPPS standard payment per hospital (Tables 1A-1E, 2, 3, 5).
+  - Hospital set: labor and delivery hospitals only (CMS SM-7; no psychiatric hospitals or Rural
+    Emergency Hospitals).
+  - Outputs: national, state, and hospital-group summaries; the within-hospital cesarean/vaginal
+    price ratio; physician fees; a hospital-listed Medicare check.
+  - Figures: `birth1`-`birth3`.
+  - Results: commercial DRG 807 $8,584 (1.72x Medicare) and DRG 788 $12,465 (1.74x); Medicaid
+    $5,396 (1.08x) and $7,643 (1.10x); the 788/807 ratio is 1.42 for both, 1,602 hospitals.
+- **`R/midwifery_link.R` and `analysis/17_midwifery_presence.R`: midwifery presence** (exploratory).
+  - Measures: AMCB-certified midwives, NVSS births, and CABC birth centers within 30 miles of each
+    delivery hospital (Census ZCTA points).
+  - Model: prices on those measures, with the wild cluster restricted bootstrap by state.
+  - Result: null. The high tertile's commercial vaginal price is +3.2% (-8.7% to +16.6%); the
+    premium is flat. Figure `birth4`.
+- **`docs/childbirth_analytic_spec.md`: the locked design** of the NTSV cesarean analysis
+  (approved 2026-09-14), with seven amendments made during implementation listed at its end.
+- **`R/ntsv_county.R` and `analysis/18_ntsv_midwife_supply.R`**, implementing the spec:
+  - Data: a CDC WONDER export registry and reader, NTSV rates, and county composition shares.
+    Suppressed cells are bounded at 1-9 and never read as zero.
+  - Exposure: supply at 2020 Census county centers of population.
+  - Model: births-weighted linear, state fixed effects, wild cluster bootstrap. Sensitivity: a
+    quasi-binomial logit with CR1 errors. Checks: placebo, negative-control, and state models.
+  - Price step: the implied facility price differential by payer.
+  - Safeguards: the script stops and prints the exact query for any missing export, and checks
+    each export's Notes block for the NTSV filters. No CDC numbers are in the repository.
+- `tools/smoke_ntsv.R` runs `analysis/18` end to end on synthetic WONDER exports in a temporary
+  data folder. It was moved out of the working scratchpad.
+- Docs:
+  - `docs/childbirth_methods.md`.
+  - `docs/turquoise_pricepoints.md`, from the scratchpad inventory of Turquoise Health's
+    pricepoints repository. Its delivery replication data is not downloadable.
+  - Appendix sections E9 and M.
+  - Five childbirth figures in the README.
+- Tests: `test-birth.R`, `test-midwifery.R`, and `test-ntsv.R` (50 expectations, including a
+  check of the CR1 errors against `sandwich::vcovCL`).
+
+### Changed
+- **Per-diem MS-DRG rates become stay prices at load**: `case_dollar` = rate x the CMS Table 5
+  geometric mean length of stay, marked `per_diem_converted`.
+  - A rate at or above 3x Medicare's national per-day payment is taken as a mislabeled stay price
+    (`per_diem_as_case`), following Turquoise Health.
+  - Medians, payer ratios, and ownership prices use `case_dollar`. The new table `ref_drg_los`
+    holds the length of stay and per-day payment.
+  - Rows converted: vaginal 13,309, cesarean 12,612, DRG 742/743 5,422, DRG 619-621 6,207.
+- **Effects of the rebuild on documented numbers:**
+  - national commercial DRG 742 $24,361 to $25,133, and Medicaid $14,443 to $14,525;
+  - DRG 621 Medicare Advantage $12,804 to $12,809;
+  - the add-on model's DRG 620 variant -$1,247 to -$1,250;
+  - one more hospital in several Medicaid cells (colonoscopy Medicaid ratio 0.778x to 0.781x;
+    ownership estimates within 2 points).
+  - Validation is unchanged (44 pass, 4 warn, 0 fail, 2 skip).
+- `state_region_chart()` takes a custom label for its 1x line.
+- `tools/export_public.sh` keeps `docs/childbirth_methods.md` and `docs/turquoise_pricepoints.md`
+  out of the public copy (both quote Trilliant-derived numbers) and lists the spec in the public
+  README.
+
+### Fixed
+- **Midwife roster coverage.** The NPI-linked roster the midwifery measures read covers 40 states.
+  Hospitals and counties whose catchment reached AK, DC, DE, HI, ND, NJ, RI, SD, VT, WV, or WY had
+  those states' midwives counted as zero. They now get a missing exposure
+  (`roster_uncovered_zctas()`), which removes 189 of 1,546 hospitals from `analysis/17`. The
+  high-tertile estimate moved from +2.7% to +3.2%; still null.
+- `analysis/17`: the county total-cesarean block and `load_wonder_delivery_by_county()` are removed;
+  the NTSV analysis supersedes them.
+
 ## 2026-09-13 (public code copy; tools from the working scratchpad)
 
 ### Fixed
