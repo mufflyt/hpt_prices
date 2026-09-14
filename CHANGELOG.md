@@ -2,6 +2,37 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-13 (public code copy; tools from the working scratchpad)
+
+### Fixed
+- `config/paths.R`: `HPT_DATA_DIR` now bypasses the external-drive check. `Sys.getenv()` evaluates
+  its `unset` argument, so `hpt_default_data_dir()` ran, and failed, on any machine without the
+  drive even when `HPT_DATA_DIR` was set. Found by the first CI run on the public copy; the test in
+  `test-codes.R` swaps in a drive check that always fails, and fails itself if the check runs.
+
+### Changed
+- CI runs on the public code copy (github.com/mufflyt/hpt_prices_public), which carries the same
+  code and tests; Actions is turned off here. The README badge points there.
+- `docs/appendix.md` covers the public-copy policy (section A), the private known-answer file
+  (section K), and the test, CI, and publishing workflow (section L).
+
+### Added
+- `tests/testthat/fixtures/README.md`: where every fixture came from and which tool regenerates it.
+- Tools moved out of the working scratchpad:
+  - `tools/make_mrf_fixtures.py` regenerates the parser fixtures from the CMS v3.0.0 templates
+    (pinned to CMSgov commit 33833d4c).
+  - `tools/make_crosswalk_fixtures.R` regenerates the crosswalk fixtures from the real CMS, tracker,
+    and AHRQ headers under `HPT_DATA_DIR/reference`.
+  - Both reproduce the committed fixtures byte for byte.
+  - `tools/make_pe_hospital_systems.R` records how `config/pe_hospital_systems.csv` was first built;
+    the CSV remains the source of truth, and the script writes to a temp file by default.
+  - `tools/smoke_discovery.R` is a live, rate-limited smoke test for `cms-hpt.txt` discovery,
+    snowballing, and the footer fallback; all state goes to a temporary directory.
+  - `tools/run_test_file.R` runs one test file with the suite's setup.
+- The OPPS Addendum B test fixture no longer carries the AMA copyright line or CPT short
+  descriptors (placeholders now). It keeps the preamble the parser must skip, a Windows-1252 byte,
+  and the public CMS payment rates the tests check.
+
 ## 2026-09-13 (line-type cleanup; geographic figures)
 
 ### Fixed

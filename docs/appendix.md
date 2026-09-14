@@ -57,6 +57,22 @@ scraping of its site (2.3(xii)) and building rate data for redistribution to thi
 - should not be used to publish a rate database. Confirm with Trilliant before publishing a paper
   built on it.
 
+**Public code copy.** This repository stays private because its docs and figures carry
+Trilliant-derived numbers. A code-only copy, github.com/mufflyt/hpt_prices_public, is built from it
+by `tools/export_public.sh`. The copy includes code, tests, config, tools, CI, and
+`docs/trilliant_download.md`. It leaves out:
+
+- the figures (`docs/figures/`);
+- the CHANGELOG, NEWS, this appendix, and the methods and impact docs;
+- `config/known_answers.csv`.
+
+The export reads every known-answer value and file hash from `config/known_answers.csv` and refuses
+to write if any appears in the exported tree. To keep the code publishable:
+
+- code comments state each rule's evidence qualitatively and point here for the numbers;
+- payer-rule notes carry no lake row counts;
+- test fixtures use synthetic values.
+
 ## B. Extraction from the Trilliant lake
 
 `analysis/01_trilliant_extract.R` and `R/trilliant.R`.
@@ -381,8 +397,9 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
 4 warn, 0 fail, 2 skip.
 
 - **Integrity:** keys, bridge, row counts, file ids, and medians current: all pass.
-- **Known answers:** Denver Health and HCA Houston Healthcare Southeast reproduce the live files
-  exactly (for example 45378 $1,289.13 and $2,431.00; MS-DRG 742 $31,230.50 and $4,429.00).
+- **Known answers** (`config/known_answers.csv`, private; the check skips without it): Denver
+  Health and HCA Houston Healthcare Southeast reproduce the live files exactly (for example 45378
+  $1,289.13 and $2,431.00; MS-DRG 742 $31,230.50 and $4,429.00).
 - **CMS OPPS benchmark** (national hospital-listed Medicare facility median / Addendum B rate):
 
   | Code | Ratio |
@@ -413,7 +430,10 @@ DuckDB CLI 1.5 or newer (DuckLake needs it; the R package is older). `jq` for JS
 
 **Data location.** Set `HPT_DATA_DIR`. The default is `/Volumes/MufflySamsung 1/hpt_prices`;
 `hpt_default_data_dir()` checks with `df` that the path is a real mount point, because a stale
-folder at `/Volumes/MufflySamsung` would otherwise fill the boot disk.
+folder at `/Volumes/MufflySamsung` would otherwise fill the boot disk. Before 2026-09-13 that check
+ran even when `HPT_DATA_DIR` was set (`Sys.getenv()` evaluates its `unset` argument), so the
+pipeline failed on any machine without the drive. It now runs only when `HPT_DATA_DIR` is unset;
+`tests/testthat/test-codes.R` guards this.
 
 **Order and runtimes** (16 GB Mac, external SSD):
 
@@ -432,5 +452,16 @@ folder at `/Volumes/MufflySamsung` would otherwise fill the boot disk.
 | Geographic figures | `analysis/15_geographic_figures.R` | about 30 s |
 
 Run the median-dependent steps (11, 12, 14) after any rebuild, and step 10 last. DuckDB is capped at
-5 GB and 3 threads and spills to `HPT_DATA_DIR/duckdb_tmp`. Tests run offline:
-`Rscript tests/testthat.R`.
+5 GB and 3 threads and spills to `HPT_DATA_DIR/duckdb_tmp`.
+
+**Tests and CI.**
+- `Rscript tests/testthat.R` runs the offline suite, with `HPT_DATA_DIR` set to a temporary folder
+  so tests never touch real data. `tools/run_test_file.R <file>` runs one file.
+- `tests/testthat/fixtures/README.md` records where every fixture came from and which tool
+  regenerates it.
+- GitHub Actions runs the suite on the public code copy, installing the R packages and the DuckDB
+  CLI. Actions is turned off in this private repository.
+
+**Publishing a code change.** Merge here first. Then run
+`tools/export_public.sh ~/hpt_prices_public`, review the diff in that clone, commit, and push. The
+copy's CI runs on the push.

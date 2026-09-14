@@ -3,6 +3,28 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-13 (the code goes public; the data stays private)
+
+**The pipeline's code now has a public home.** github.com/mufflyt/hpt_prices_public holds the code,
+tests, tools, and the guide to downloading the Trilliant data, and its tests run automatically on
+every change. Everything built from the data stays in this private repository: prices, figures,
+results, and the documents that quote them. Trilliant's terms do not allow that material to be
+redistributed. One command, `tools/export_public.sh`, rebuilds the public copy, and it refuses to
+publish if a price read from Trilliant would slip through. To make that possible, the handful of
+real prices that sat in the code (the known answers the validation checks against, and a few
+examples in comments) moved into a private file.
+
+**A bug that would have stopped the pipeline on your other computer.** Pointing the pipeline at a
+data folder with `HPT_DATA_DIR` did not actually stop it from looking for the external drive, so on
+any machine without that drive it failed at the first step. The public copy's first automated test
+run caught it; it is fixed, and a test keeps it fixed.
+
+**The helper scripts are in the repository now.** The scripts that downloaded and unpacked the
+Trilliant file, generated the test fixtures, and built the private-equity system list were written
+during the build and lived only in a temporary folder. They are now in `tools/`, with the download
+walked through in `docs/trilliant_download.md`, so the whole pipeline can be rebuilt on another
+machine.
+
 ## 2026-09-13 (cleaner prices, maps, and a harder look at the figures)
 
 **IUD insertion was three products wearing one code.** A hospital can list CPT 58300 as a clinic
