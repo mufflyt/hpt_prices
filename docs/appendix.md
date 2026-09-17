@@ -471,7 +471,12 @@ duckdb (R), sf, maps, patchwork, and mysterymaps (github.com/mufflyt/mysterymaps
 DuckDB CLI 1.5 or newer (DuckLake needs it; the R package is older). `jq` for JSON MRFs. About
 170 GB free on the data drive for the lake and its extraction.
 
-**Data location.** Set `HPT_DATA_DIR`. The default is `/Volumes/MufflySamsung 1/hpt_prices`;
+**Data location.** Set `HPT_DATA_DIR`. The default is whichever `/Volumes/MufflySamsung*` path is
+a real mount point, preferring one that already holds `hpt_prices` (`hpt_volume_candidates()`).
+macOS appends a number when a stale folder occupies the name, and the number changes between
+mounts: the drive was at `MufflySamsung 1` on 2026-09-12 and at `MufflySamsung 3` on 2026-09-17,
+with three stale, empty folders on the boot disk beside it. The candidates used to be a hardcoded
+pair, which read as "drive not mounted" while the drive was plugged in.
 `hpt_default_data_dir()` checks with `df` that the path is a real mount point, because a stale
 folder at `/Volumes/MufflySamsung` would otherwise fill the boot disk. Before 2026-09-13 that check
 ran even when `HPT_DATA_DIR` was set (`Sys.getenv()` evaluates its `unset` argument), so the

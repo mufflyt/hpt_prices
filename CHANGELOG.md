@@ -2,6 +2,20 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-17 (find the data drive whatever number macOS mounts it under)
+
+### Fixed
+- `hpt_default_data_dir()` globbed the volume instead of checking a hardcoded
+  `/Volumes/MufflySamsung` and `/Volumes/MufflySamsung 1`. macOS appends a number when a stale
+  folder occupies the name, and the number moves: the drive was at `MufflySamsung 1` on
+  2026-09-12 and at `MufflySamsung 3` on 2026-09-17, with `MufflySamsung`, ` 1` and ` 2` all stale
+  empty folders on the boot disk. The pipeline reported "External drive 'MufflySamsung' is not
+  mounted" while the drive was plugged in and holding the data.
+- `hpt_volume_candidates()` returns every `/Volumes/MufflySamsung*` path, one already holding
+  `hpt_prices` first, so a second empty copy cannot quietly become the destination. The `df`
+  mount-point check is unchanged and still refuses a stale boot-disk folder, which is what keeps
+  an 80 GB lake off the 14 GB boot volume. Tests cover both.
+
 ## 2026-09-17 (APR-DRG delivery codes, as an opt-in coverage sensitivity)
 
 ### Added
