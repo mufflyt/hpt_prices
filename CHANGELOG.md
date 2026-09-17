@@ -2,6 +2,40 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-17 (APR-DRG delivery codes, as an opt-in coverage sensitivity)
+
+### Added
+- **APR-DRG is a code family of its own** (`apr_drg`), alongside `procedure` and `ms_drg`:
+  - `config/codebook.csv` carries APR-DRG 560-1 (vaginal) and 540-1 (cesarean), the severity-1
+    (uncomplicated) cases that MS-DRG 807 and 788 price. Severities 2-4 have no anchor and are not
+    collected.
+  - `normalize_apr_drg_code()` and its SQL twin `sql_apr_drg_code()` fold every spelling of a
+    base-plus-severity code ("560-1", "560.1", "5601", "560 SOI 1", "APR-DRG 540-1") into one
+    canonical form. A four-digit run is read as base plus severity only when the last digit is
+    1-4, so "5609" stays unmatched rather than being invented into a severity.
+  - `apr_drg_code_types()` gates the family: an APR-DRG entry matches only a row whose declared
+    type names the APR grouper. Untyped rows and the generic "DRG" never match, because an
+    untyped three-digit code could be either grouper (APR-DRG 742 is not MS-DRG 742). This is the
+    one family with no "unverified" state.
+  - Both engines carry the rule: `code_type_fit()` in R and the extract's `CASE` in SQL, checked
+    against each other on the same inputs in `test-codes.R`.
+- **`add_apr_drg_delivery_prices()`** lets an APR-DRG severity-1 price stand in for the MS-DRG
+  anchor at a hospital that posts no MS-DRG delivery price. It never overwrites an MS-DRG price,
+  and labels every row `price_source` ("ms_drg" or "apr_drg").
+- `analysis/16` reads the APR-DRG codes only under `HPT_BIRTH_APR_DRG=true` (off by default) and
+  reports how many hospitals the fallback adds. Headline numbers stay MS-DRG only.
+
+### Why
+Hospitals in states whose Medicaid programs pay by APR-DRG post inpatient prices only as
+APR-DRGs, so they had no delivery price here at all: a documented gap (appendix J) and the one
+Turquoise Health closes by mapping APR-DRG 560 severity 1 to MS-DRG 807.
+
+### Not yet measured
+How many hospitals the fallback adds, and how their prices compare, needs a re-extract from the
+Trilliant lake (`analysis/01`), which needs the data drive. The two groupers assign cases
+differently and the Medicare benchmark stays the MS-DRG one, so this stays a sensitivity reported
+apart from the headline until that measurement exists.
+
 ## 2026-09-14 (childbirth prices; per-diem DRG conversion; midwifery supply and the NTSV design)
 
 ### Added

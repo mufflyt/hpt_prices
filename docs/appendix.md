@@ -425,9 +425,9 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
 - **Codes only in descriptions** or CDM/local columns are missed by design.
 - **Rates above gross** remain in 6.6% of rates that carry a gross charge (validation warning); the
   35 files where most rates exceed gross are excluded from medians.
-- **APR-DRG-only inpatient prices are missed.** Code-type gating never lets an APR-DRG match an
-  MS-DRG. So a hospital that posts delivery, hysterectomy, or bariatric prices only as APR-DRGs
-  (common where Medicaid pays by APR-DRG) has no DRG price here.
+- **APR-DRG-only inpatient prices are missed**, except for delivery. Code-type gating never lets
+  an APR-DRG match an MS-DRG, so a hospital that posts hysterectomy or bariatric prices only as
+  APR-DRGs has no DRG price here. Delivery has an opt-in fallback (section M), off by default.
 - **Per-diem threshold** (E9). A per-diem rate just under 3x the Medicare per-day payment is
   multiplied even if it is really a mislabeled stay price.
 - **Midwife roster coverage.** The NPI-linked AMCB roster read from the midwifery repository covers
@@ -531,6 +531,12 @@ Full methods: [`docs/childbirth_methods.md`](childbirth_methods.md). Design of t
   Medicaid is $5,396 (1.08x) and $7,643 (1.10x). Within hospitals, the cesarean price is 1.42x the
   vaginal price for both payers, exactly the ratio of Medicare's DRG weights.
 - **Language.** The cesarean-vaginal gap is a facility price differential, not savings or value.
+- **APR-DRG fallback** (`HPT_BIRTH_APR_DRG=true`, off by default). The codebook carries APR-DRG
+  560-1 and 540-1 in their own `apr_drg` family, matched only when the row's declared type names
+  the APR grouper (`apr_drg_code_types()`); an untyped or MS-DRG-typed three-digit code never
+  matches one. `add_apr_drg_delivery_prices()` lets a severity-1 price stand in for MS-DRG 807 or
+  788 at a hospital posting no MS-DRG delivery price, never overwriting one, labelling each row
+  `price_source`. How much coverage it adds is not yet measured: it needs a re-extract.
 - **Midwifery presence** (`analysis/17`, exploratory):
   - Exposure: midwives within 30 miles per 1,000 births within 30 miles.
   - Result: no association with delivery prices or the premium. The high tertile's commercial
