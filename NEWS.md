@@ -3,6 +3,22 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-17 (reaching the hospitals that price births a different way)
+
+**Some hospitals were invisible in the birth prices.** Medicaid programs in several states pay by
+a different grouper, APR-DRG, and hospitals there post delivery prices only that way. Our rules
+match a code only when the hospital says which code system it used, which is what keeps an
+APR-DRG 742 out of the MS-DRG 742 results, and it also meant these hospitals had no delivery
+price at all.
+
+**They can now be included, carefully and separately.** The two delivery APR-DRGs at their
+uncomplicated severity can stand in for the usual codes at a hospital that posts nothing else.
+Such a price never replaces a real one, every row is labelled with where it came from, and the
+headline numbers stay as they were. Turquoise Health treats these codes the same way.
+
+**How many hospitals this adds is not known yet.** Measuring it means re-reading the source data,
+which needs the external drive. Until then the option is off by default.
+
 ## 2026-09-14 (what a birth costs, and the midwifery question, designed properly)
 
 **What hospitals charge for a birth.** For an uncomplicated vaginal delivery, commercial insurers

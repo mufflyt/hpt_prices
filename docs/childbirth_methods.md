@@ -30,10 +30,19 @@ repeat cesareans, and outcomes.
     means no labor and delivery unit.
   - Psychiatric hospitals and Rural Emergency Hospitals (no inpatient beds) are also excluded.
   - 1,602 hospitals have a delivery DRG price.
-- **APR-DRG lines are not counted.** Code-type gating never lets an APR-DRG match an MS-DRG
-  (appendix B). So hospitals that post delivery prices only as APR-DRG 540 or 560 are missing.
-  Turquoise Health maps APR-DRG 560 severity 1 to MS-DRG 807 (see
+- **APR-DRG lines are off by default, and available as a coverage sensitivity.** Code-type
+  gating never lets an APR-DRG match an MS-DRG (appendix B), so hospitals posting delivery prices
+  only as APR-DRG used to be missing outright. The codebook now carries APR-DRG 560-1 (vaginal)
+  and 540-1 (cesarean), the uncomplicated severity that MS-DRG 807 and 788 price, and
+  `HPT_BIRTH_APR_DRG=true` lets them stand in for the MS-DRG anchor at a hospital that posts no
+  MS-DRG delivery price (`add_apr_drg_delivery_prices()`). It never overwrites an MS-DRG price,
+  every row it adds is labelled `price_source = "apr_drg"`, and the headline numbers above are
+  MS-DRG only. The two groupers assign cases differently and the benchmark stays the MS-DRG one,
+  so this is an approximation reported apart, not a like-for-like addition. Turquoise Health maps
+  APR-DRG 560 severity 1 the same way (see
   [`turquoise_pricepoints.md`](turquoise_pricepoints.md)).
+  **Not yet measured:** how many hospitals it adds needs a re-extract from the lake
+  (`analysis/01`), which needs the data drive.
 
 ## 2. Hospital prices
 
@@ -184,7 +193,7 @@ value is set to missing when suppression could move it by more than 1 percentage
   wage index.
 - **Per-diem thresholds.** The 3x rule decides whether a per-diem rate is multiplied. Rates just
   below the threshold may still be mislabeled stay prices.
-- **APR-DRG-only hospitals are missing** (section 1).
+- **APR-DRG-only hospitals are excluded** unless the sensitivity above is turned on (section 1).
 - **Medicaid coverage is thinner** (about 725 hospitals, against about 1,485 for commercial).
   Several states' Medicaid programs pay by APR-DRG or fee schedules that hospitals do not post as
   MS-DRG rates.
