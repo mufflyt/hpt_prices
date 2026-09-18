@@ -2,6 +2,28 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-18 (thin ownership cells, and a provisional parameter that decides the answer)
+
+### Changed
+- `exploratory` now also flags an ownership group with fewer than `min_treated_hospitals()` (10)
+  hospitals, not only one spanning fewer than 5 health systems. The cluster rule is about
+  inference; it said nothing about how much evidence carries the price, so six estimates built on
+  8 or 9 hospitals -- including a +108% Medicaid difference for 58100 -- were reported like any
+  other row. The note now says which bar a group failed, since the two mean different things. One
+  of the 93 rows the forest plot draws changes.
+- The tornado figure marks each provisional parameter with a dagger and counts them in its
+  caption, and `docs/addon_methods.md` calls the device paid share provisional in the same sentence
+  that calls it the only parameter able to flip the sign. It swings net value by $2,109, four
+  times the next parameter, and its range runs -$1,445 to +$665, so the headline holds at an
+  assumed value with no published source behind it.
+
+### Audited, no change needed
+- Ownership reads both of its flags in the analysis and the figure, and of the 93 plotted rows, 86
+  carry a bootstrap interval while the rest are exploratory by design: none plots a point whose
+  interval is silently missing.
+- All 54 add-on parameters carry a source, and the 20 without a defensible direct one were already
+  flagged `provisional` in the configuration and the methods document.
+
 ## 2026-09-18 (a two-digit year dated a file to the year 26)
 
 ### Fixed
