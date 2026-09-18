@@ -593,7 +593,18 @@ Full methods: [`docs/childbirth_methods.md`](childbirth_methods.md). Design of t
   the APR grouper (`apr_drg_code_types()`); an untyped or MS-DRG-typed three-digit code never
   matches one. `add_apr_drg_delivery_prices()` lets a severity-1 price stand in for MS-DRG 807 or
   788 at a hospital posting no MS-DRG delivery price, never overwriting one, labelling each row
-  `price_source`. How much coverage it adds is not yet measured: it needs a re-extract.
+  `price_source`, and writing `birth_apr_*` files so the MS-DRG build is untouched.
+
+  Measured on the 2026-09-18 extract: **517 hospitals post a delivery price only as APR-DRG**, of
+  which **355 pass the labour-and-delivery filter** and reach the analysis.
+
+  **Its price levels must not be quoted.** At hospitals posting both code systems, an APR-DRG
+  severity-1 price is about half the MS-DRG price for the same delivery (median ratio 0.45 for
+  Medicaid vaginal, 0.52 commercial, IQR roughly 0.28 to 0.89), so the fallback build's lower
+  medians mix a different population with a code system that prices lower at the same hospital.
+  What the fallback does establish is coverage (355 delivery hospitals are invisible to an
+  MS-DRG-only analysis) and the robustness of the cesarean premium, which is a within-hospital
+  ratio and stays at 1.42 on both builds. Details: `docs/childbirth_methods.md` section 4b.
 - **Midwifery presence** (`analysis/17`, exploratory):
   - Exposure: midwives within 30 miles per 1,000 births within 30 miles.
   - Result: no association with delivery prices or the premium. The high tertile's commercial

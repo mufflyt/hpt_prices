@@ -30,19 +30,15 @@ repeat cesareans, and outcomes.
     means no labor and delivery unit.
   - Psychiatric hospitals and Rural Emergency Hospitals (no inpatient beds) are also excluded.
   - 1,602 hospitals have a delivery DRG price.
-- **APR-DRG lines are off by default, and available as a coverage sensitivity.** Code-type
-  gating never lets an APR-DRG match an MS-DRG (appendix B), so hospitals posting delivery prices
-  only as APR-DRG used to be missing outright. The codebook now carries APR-DRG 560-1 (vaginal)
-  and 540-1 (cesarean), the uncomplicated severity that MS-DRG 807 and 788 price, and
+- **APR-DRG lines are off by default, and they reach a lot of hospitals.** Code-type gating never
+  lets an APR-DRG match an MS-DRG (appendix B), so hospitals posting delivery prices only as
+  APR-DRG were missing outright. The codebook carries APR-DRG 560-1 (vaginal) and 540-1
+  (cesarean), the uncomplicated severity that MS-DRG 807 and 788 price, and
   `HPT_BIRTH_APR_DRG=true` lets them stand in for the MS-DRG anchor at a hospital that posts no
   MS-DRG delivery price (`add_apr_drg_delivery_prices()`). It never overwrites an MS-DRG price,
-  every row it adds is labelled `price_source = "apr_drg"`, and the headline numbers above are
-  MS-DRG only. The two groupers assign cases differently and the benchmark stays the MS-DRG one,
-  so this is an approximation reported apart, not a like-for-like addition. Turquoise Health maps
-  APR-DRG 560 severity 1 the same way (see
-  [`turquoise_pricepoints.md`](turquoise_pricepoints.md)).
-  **Not yet measured:** how many hospitals it adds needs a re-extract from the lake
-  (`analysis/01`), which needs the data drive.
+  every row it adds is labelled `price_source = "apr_drg"`, and it writes `birth_apr_*` files, so
+  the MS-DRG build below is untouched. Turquoise Health maps APR-DRG 560 severity 1 the same way
+  (see [`turquoise_pricepoints.md`](turquoise_pricepoints.md)). Section 4b has the measurement.
 
 ## 2. Hospital prices
 
@@ -131,6 +127,58 @@ obstetric codes.
 - `birth3_vaginal_maps`: commercial and Medicaid maps. States with fewer than 5 hospitals are
   suppressed.
 
+## 4b. What the APR-DRG fallback adds, and what it cannot be used for (2026-09-18 extract)
+
+The 2026-07-21 lake carries **11,269 APR-DRG 540-1 rows across 1,138 files** and **10,989 APR-DRG
+560-1 rows across 1,136 files**. **517 hospitals post a delivery price only as APR-DRG severity
+1**, and **355 of those survive the labour-and-delivery filter** (CMS SM-7, no psychiatric
+hospitals or Rural Emergency Hospitals) to enter the analysis. 355 is the coverage figure: the
+other 162 would be dropped whatever grouper they used.
+
+### The prices are not interchangeable
+
+At hospitals that post BOTH code systems, the APR-DRG severity-1 price is about **half** the
+MS-DRG price for the same delivery:
+
+| Comparison (same hospital, same payer) | Hospitals | Median APR / MS-DRG | IQR |
+|---|---|---|---|
+| Vaginal, Medicaid (560-1 vs 807) | 356 | **0.45** | 0.28 to 0.85 |
+| Vaginal, commercial | 345 | **0.52** | 0.27 to 0.89 |
+| Cesarean, Medicaid (540-1 vs 788) | 364 | **0.54** | |
+| Cesarean, commercial | 352 | **0.61** | |
+
+This is not a methodology artefact. It holds within case-rate rows (Medicaid median $2,934 for
+560-1 against $4,364 for 807) and the spread is wide, so no single calibration factor would fix
+it. Whether APR-DRG severity 1 is simply a narrower, lower-acuity product than "MS-DRG without
+CC/MCC", or hospitals post something closer to a base rate on those lines, is not settled here.
+
+**So the fallback's price levels must not be quoted.** The build reports a Medicaid vaginal median
+of $4,626 at 0.94x Medicare against $5,396 at 1.08x for MS-DRG only, and that fall mixes two
+things that cannot be separated from these data: a different population of hospitals, and a code
+system that prices lower at the same hospital. The earlier draft of this section read that 0.94x
+as a coverage result. It is not one.
+
+### What the fallback IS good for
+
+- **Counting who is invisible.** 355 delivery hospitals have no MS-DRG delivery price at all, and
+  the MS-DRG-only analysis silently omits them. Their Medicaid concentration matters even if their
+  price levels are not comparable: the APR-only Medicaid rows sit in TX (98), FL (86), NY (76), CA
+  (50), MN (50), WI (36), IL (34), OH (30), AZ (26) and MI (26), states widely reported to pay
+  Medicaid inpatient claims by APR-DRG. This project has not verified any state's payment method
+  against a primary source; that is the check that would settle the mechanism.
+- **Testing the cesarean premium on a different sample.** The premium is a ratio taken WITHIN a
+  hospital, so a level difference affecting both codes cancels. It is 1.42 on the MS-DRG build and
+  1.42 with the fallback, across a Medicaid sample half again as large. That is a real robustness
+  result and the strongest evidence yet that 1.42 is a contracting convention.
+
+### Per-diem APR rows are dropped
+
+The per-diem conversion multiplies a daily rate by the DRG's geometric mean length of stay, which
+CMS publishes for MS-DRGs only. MS-DRG per-diem rows convert at 94.7%; APR-DRG rows converted at
+0%, so a per-day amount was being compared against a stay price. `rate_row_filter_sql()` now drops
+per-diem APR-DRG rows. It moved the Medicaid median by $5 (from $4,631 to $4,626), which is how
+the audit established that per-diem rows were not what made the two code systems differ.
+
 ## 5. Midwifery presence around hospitals (analysis/17, exploratory)
 
 - **Exposure.** Active AMCB-certified midwives (CNM and CM) are placed at the ZCTA internal point
@@ -200,7 +248,9 @@ value is set to missing when suppression could move it by more than 1 percentage
   wage index.
 - **Per-diem thresholds.** The 3x rule decides whether a per-diem rate is multiplied. Rates just
   below the threshold may still be mislabeled stay prices.
-- **APR-DRG-only hospitals are excluded** unless the sensitivity above is turned on (section 1).
+- **APR-DRG-only hospitals are excluded** from the headline numbers unless the fallback is turned
+  on (sections 1 and 4b). That exclusion is not neutral: it drops 518 hospitals, most of them
+  Medicaid, and they price lower than the hospitals that remain.
 - **Medicaid coverage is thinner** (about 725 hospitals, against about 1,485 for commercial).
   Several states' Medicaid programs pay by APR-DRG or fee schedules that hospitals do not post as
   MS-DRG rates.

@@ -2,6 +2,47 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-18 (the APR-DRG fallback reaches 518 hospitals, and the two builds stop colliding)
+
+### Measured
+- The re-extract carries 11,269 APR-DRG 540-1 rows (1,138 files) and 10,989 560-1 rows (1,136
+  files). **518 hospitals post a delivery price only as APR-DRG severity 1**, and **355 of them
+  pass the labour-and-delivery filter** and reach the analysis; the analysis now reports both, the
+  first being counted before that filter.
+- **The two code systems do not price the same product.** At hospitals posting both, an APR-DRG
+  severity-1 price is about half the MS-DRG price for the same delivery: median ratio 0.45
+  (Medicaid vaginal), 0.52 (commercial vaginal), 0.54 and 0.61 for cesarean, IQR roughly 0.28 to
+  0.89. It holds within case-rate rows, so it is not a methodology artefact, and the spread is too
+  wide for a single calibration factor. The fallback build's lower medians therefore mix a
+  different population of hospitals with a code system that prices lower at the same hospital, and
+  its price levels are not quoted anywhere.
+- The cesarean premium is 1.42 on both builds, across a Medicaid sample half again as large. A
+  within-hospital ratio that lands in the same place on a different set of hospitals is evidence
+  that 1.42 is a contracting convention rather than an artefact of coverage.
+
+### Fixed
+- `rate_row_filter_sql()` drops per-diem APR-DRG rows. The per-diem conversion multiplies by a
+  DRG's geometric mean length of stay, which CMS publishes for MS-DRGs only: MS-DRG per-diem rows
+  convert at 94.7% and APR-DRG rows at 0%, so a per-day amount was being compared against a stay
+  price. Worth $5 on the Medicaid median, which is how the audit established that per-diem rows
+  were not what makes the two code systems differ.
+- `tools/post_extract_refresh.sh` ran validation second; `docs/appendix.md` section L says it runs
+  last, because it compares the saved medians against the database. Running it before 11 rebuilt
+  them produced a spurious "49,461 saved rows vs 49,773 recomputed" warning about the runbook's
+  own order. Validation now runs last.
+- The fallback run wrote the same filenames as the MS-DRG run, so whichever went last owned
+  `output/`. An impact table then compared an MS-DRG "before" with an APR-DRG "after" and reported
+  a 14% fall in the Medicaid delivery price that was really 347 extra hospitals. The fallback now
+  writes `birth_apr_*` files and figures, the two builds sit side by side, and analysis 17 and 18
+  read the unprefixed names so they always see the MS-DRG build rather than whatever ran last.
+- `tools/post_extract_refresh.sh` no longer depends on stage order for that separation, and says
+  where each build's outputs are.
+
+### Rebuild
+- 09 through 17 all ran clean on the new extract: 11,521,371 rates, 4,017 files, 3,368 CCNs.
+- The CCN conflict exclusion and ZIP/city blocking moved the MS-DRG headline numbers by at most
+  0.4%, and the Medicaid vaginal median not at all ($5,396 before and after).
+
 ## 2026-09-18 (thin ownership cells, and a provisional parameter that decides the answer)
 
 ### Changed
