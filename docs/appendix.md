@@ -547,6 +547,15 @@ Run the median-dependent steps (11, 12, 14) after any rebuild, and step 10 last.
 **Smoke tests.** `tools/smoke_ntsv.R` runs `analysis/18` end to end on synthetic WONDER exports
 in a temporary data folder whose other inputs are symlinks to the real ones (about 1 minute).
 
+**After a fresh extract.** `tools/post_extract_refresh.sh [before_dir]` runs 09, 10, 11, 12, 13,
+14, 15, 16 and 17 in dependency order, then the childbirth analysis again with the APR-DRG
+fallback on, and prints what moved. Running the stages by hand invites a half-refreshed output
+directory where a state median comes from one build and a figure from another. Given a copy of
+`output/` taken before the rebuild, `tools/refresh_impact.R` prints a before/after table of the
+twelve numbers the documents quote, so a number that changed is noticed rather than left to
+contradict the prose: that is how the appendix came to quote a DRG 742 median two rules out of
+date. 18 is skipped, since it needs the CDC WONDER exports.
+
 **Publishing a code change.** Merge here first. Then run
 `tools/export_public.sh ~/hpt_prices_public`, review the diff in that clone, commit, and push. The
 copy's CI runs on the push.
