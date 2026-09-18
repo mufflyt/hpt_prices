@@ -186,11 +186,33 @@ the audit established that per-diem rows were not what made the two code systems
   1,000 NVSS births in counties whose center lies within 30 miles. The model uses tertiles
   (cut points 1.91 and 3.87) and log2(x + 0.5). Secondary exposures are a CABC-accredited birth
   center within 30 miles and the county's CNM-attended share of births.
-- **Roster coverage.** The NPI-linked roster
-  (`tracked_roster_active_primary_linked.csv`) covers 40 states. It leaves out AK, DC, DE, HI,
-  ND, NJ, RI, SD, VT, WV, and WY. A hospital whose 30-mile area reaches a ZIP in those states has
-  no exposure (`roster_uncovered_zctas()`), so 189 of 1,546 hospitals are left out. Before this
-  guard, those hospitals counted their neighbors' midwives as zero.
+- **Roster coverage.** The midwife roster is the national AMCB-NPI linkage freeze
+  (`amcb_npi_linkage_FROZEN.csv`), read at the rows the withdrawn 40-state roster meant by
+  "active primary linked": in the reconciled cohort, certification ACTIVE, and a midwifery
+  rather than nursing taxonomy. That is 12,170 midwives covering all 50 states and DC, against
+  11,093 over 40 states before (1,127 added, 50 dropped). Lapsed, retired and deceased certificants stay out; a supply
+  measure counts who is practising now.
+
+  The freeze is verified by content, not by name: `load_midwife_roster()` re-hashes it against
+  the sha256 in the midwifery repository's tracked manifest and stops on a mismatch. That repo
+  once described 11,920 midwives instead of the registered number because a stale file sat in
+  `artifacts/` under the right name.
+
+  **This replaced an exclusion, and it moved more than the excluded hospitals.** The old roster
+  omitted AK, DC, DE, HI, ND, NJ, RI, SD, VT, WV and WY, so a hospital whose 30-mile area
+  reached a ZIP in one of them had no exposure at all (`roster_uncovered_zctas()`) and 188 of
+  1,539 hospitals dropped out. All 188 now have a count. But of the 1,127 added midwives only 805 are in
+  those eleven states; the other 272 are spread across states the roster already covered (FL
+  +28, CA +22, NY +20 the largest), so the exposure changes for 729 of the 1,351 hospitals that
+  were never excluded. The median
+  midwife count within 30 miles goes from 25 to 28. Results below are on the new roster; the
+  earlier numbers are not comparable hospital for hospital.
+
+  `roster_uncovered_zctas()` is still called and must now return nothing;
+  `national_roster_coverage(strict = TRUE)` stops the run if a future input covers less ground,
+  so the masking would come back on rather than silently counting real midwives as zero.
+  Foreign practice addresses are excluded by postal code: one Rhineland-Palatinate address has a
+  postal code that collides with a US ZCTA, and APO/FPO codes (AE, AP) have no ZCTA at all.
 - **Model.** Log outcome ~ exposure + hospital type + system + ownership + log beds + metro +
   state fixed effects. Intervals come from the wild cluster restricted bootstrap by state
   (9,999 draws).
@@ -254,4 +276,4 @@ value is set to missing when suppression could move it by more than 1 percentage
 - **Medicaid coverage is thinner** (about 725 hospitals, against about 1,485 for commercial).
   Several states' Medicaid programs pay by APR-DRG or fee schedules that hospitals do not post as
   MS-DRG rates.
-- **Midwife roster.** 40 states until the national linkage freeze is used (section 5).
+- **Midwife roster.** Resolved: the national linkage freeze covers all 50 states and DC (section 5).

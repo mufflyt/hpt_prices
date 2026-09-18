@@ -463,9 +463,10 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
   APR-DRGs has no DRG price here. Delivery has an opt-in fallback (section M), off by default.
 - **Per-diem threshold** (E9). A per-diem rate just under 3x the Medicare per-day payment is
   multiplied even if it is really a mislabeled stay price.
-- **Midwife roster coverage.** The NPI-linked AMCB roster read from the midwifery repository covers
-  40 states. Midwifery exposures are missing, not zero, wherever a catchment reaches AK, DC, DE,
-  HI, ND, NJ, RI, SD, VT, WV, or WY (section M).
+- **Midwife roster coverage: resolved 2026-09-18.** The roster is now the national AMCB-NPI
+  linkage freeze, all 50 states and DC, so no exposure is set to missing. What remains is that
+  midwives sit at their NPPES practice ZIP, which is where their NPI record says they practise
+  rather than necessarily where they attend births (section M).
 
 ## K. Validation summary
 

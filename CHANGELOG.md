@@ -2,6 +2,52 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-18 (the midwife roster goes national)
+
+### Changed
+- **`load_midwife_roster()` reads the national AMCB-NPI linkage freeze**
+  (`amcb_npi_linkage_FROZEN.csv`) instead of `tracked_roster_active_primary_linked.csv`. It keeps
+  the rows the withdrawn roster meant by "active primary linked": in the reconciled cohort,
+  `status == "ACTIVE"`, and `npi_tax_class == "midwife"` rather than the nursing sensitivity arm.
+  That is **12,170 midwives across all 50 states and DC**, against 11,093 over 40 states: 1,127
+  added and 50 dropped. Lapsed (2,954), retired (774) and deceased (169) certificants stay out,
+  so the full 17,028-member cohort is deliberately not used; a supply measure counts who is
+  practising now.
+- **The freeze is verified by content, not by name.** `load_midwife_roster()` re-hashes it against
+  `artifact_sha256` in the midwifery repository's tracked manifest and stops on a mismatch. That
+  repository once described 11,920 midwives instead of the registered number because a stale copy
+  sat in `artifacts/` under the right name; the manifest is in git and the data is not, so this is
+  the only way to tell the two apart.
+- **Foreign and military addresses are excluded by postal code** (`us_postal_codes()`). One
+  Rhineland-Palatinate practice address has a postal code that collides with a US ZCTA and was
+  being placed in the United States; APO/FPO codes (AE 12, AP 8) have no ZCTA and dropped on the
+  join anyway, but are now excluded so the count is honest. 22 rows in total.
+
+### Fixed
+- **The 40-state NA masking is gone.** `roster_uncovered_zctas()` returned the eleven jurisdictions
+  the old roster omitted (AK, DC, DE, HI, ND, NJ, RI, SD, VT, WV, WY), and any catchment reaching
+  one had its midwife count set to NA. On the national freeze it returns nothing: **188 of 1,539
+  hospitals in `analysis/17` go from no exposure to a measured one** (1,351 to 1,539 usable).
+- The check is kept rather than deleted, because it is what makes that claim checkable, and
+  `national_roster_coverage(strict = TRUE)` now stops `analysis/17` and `analysis/18` if a future
+  input covers less than all 50 states and DC. Deleting it would let a partial roster silently
+  resume counting real midwives across a border as zero, which is the bug it was written for.
+
+### Measured
+- Recovering the 188 hospitals is not the whole effect. Of the 1,127 midwives added, **805 are in
+  the eleven formerly-missing states and 272 are in states the roster already covered** (FL +28,
+  CA +22, NY +20 the largest), so the exposure moved for **729 of the 1,351 hospitals that were
+  never excluded**. Median midwives within 30 miles: 25 to 28. Tertile cut points moved from
+  1.91/3.87 to 2.06/4.17. `analysis/17` stays null on every outcome.
+- 12,170 roster rows locate to 12,023 ZCTA points; the 147 that do not are ZIPs with no ZCTA (PO
+  boxes and newly issued ZIPs) and drop on the join, as before.
+
+### Documentation
+- `docs/childbirth_methods.md` section 5, `docs/childbirth_analytic_spec.md` (exposure, roster
+  coverage, and amendment 6 marked superseded), `docs/appendix.md` section J (the limitation is
+  marked resolved, leaving the NPPES-practice-ZIP caveat), README, and the `analysis/17` figure
+  caption.
+
 ## 2026-09-18 (the APR-DRG fallback reaches 518 hospitals, and the two builds stop colliding)
 
 ### Measured

@@ -212,7 +212,7 @@ Cesarean delivery (MS-DRG 788) relative to Medicare, by state:
 ![Cesarean delivery by state](docs/figures/birth1_cesarean_ranks.png)
 
 Delivery prices and the cesarean premium by midwifery presence around the hospital (exploratory;
-no association after adjustment; the midwife roster covers 40 states):
+no association after adjustment; the midwife roster is the national linkage freeze, all 50 states and DC):
 
 ![Midwifery presence](docs/figures/birth4_midwifery_presence.png)
 
