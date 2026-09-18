@@ -33,6 +33,7 @@ rates stay on the data drive (section A).
 - [K. Validation summary](#k-validation-summary)
 - [L. Reproducibility](#l-reproducibility)
 - [M. Childbirth prices and midwifery supply](#m-childbirth-prices-and-midwifery-supply)
+- [N. CCN matching: an audit and what it changed](#n-ccn-matching-an-audit-and-what-it-changed)
 
 ## A. Data sources and terms
 
@@ -585,3 +586,96 @@ Full methods: [`docs/childbirth_methods.md`](childbirth_methods.md). Design of t
 - **Reference point.** Turquoise Health's delivery-price study (commercial only) is compared in
   [`docs/turquoise_pricepoints.md`](turquoise_pricepoints.md). Its replication data is not
   downloadable.
+
+## N. CCN matching: an audit and what it changed
+
+Every price in this project reaches a hospital through one bridge row, so a wrong match moves one
+hospital's prices onto another. This section records an audit of that bridge on 2026-09-17, the two
+changes it led to, and what those changes measurably did.
+
+### What was audited
+
+The bridge as built on 2026-09-13, from the database itself:
+
+| Check | Result |
+|---|---|
+| Bridge rows / distinct CCNs / distinct files | 3,595 / 3,371 / 3,583 |
+| A bridge CCN absent from the CMS roster | 0 |
+| Files mapping to more than one CCN | 9, all within one state (4 in KY, 3 in NV), consistent with system files |
+| CCNs reached by more than one file | 144 (a hospital whose MRF URL changed, or several files) |
+| Rows flagged `ccn_conflict` | 17 |
+| `name_address` matches scoring below 0.80 | 114 of 581 (minimum 0.60) |
+
+### Finding 1: a flag that nothing read
+
+`ccn_conflict` marks a file whose URL-derived CCN is not among the CCNs its NPI points to. It was
+written to the bridge and never read again, so those files fed the medians as though the two kinds
+of evidence agreed: **17 files, 16 hospitals, 17,877 rate rows**, all from the `mrf_url` tier.
+
+`v_hospital_rate` now joins the bridge only where the flag is false. The rates stay and count as
+their own unit, so a state median still sees them, but they are not credited to a CCN the evidence
+disputes. The bridge keeps the row and the flag, so the conflict is auditable rather than deleted.
+**14 of the 16 hospitals have no other file** and therefore lose their CCN identity: we do not know
+whose prices those are.
+
+### Finding 2: a name tier with only the state to go on
+
+The `name_address` tier scored a facility against every roster hospital in the same state and
+accepted a combined similarity as low as 0.60. Exposure before the change: **114 files, 94
+hospitals, 50 of them with no other file, 2.6% of all rate rows**.
+
+`block_ccn_candidates()` now narrows the same-state candidates before scoring:
+
+1. the facility's **ZIP**, where any candidate shares it;
+2. failing that, its **city**;
+3. failing both, the state set, recorded as such.
+
+A candidate whose key is unknown is never dropped, because a missing ZIP cannot contradict one, and
+tracker- and NPI-only profiles carry no ZIP. `ccn_block_key` records which key narrowed the field.
+
+A match resting on the **name alone** -- nothing but the state agreeing, and no street address in
+the file -- must clear 0.75 rather than 0.60. A file that carries a street address is not
+penalised: the address is scored by containment and zeroed outright when house numbers differ, and
+a genuine match whose name is generic ("Denver Health Medical Center" against a roster alias)
+scores 0.71 on an exact street match alone. Penalising that would trade one error for another.
+
+### What the change measured (crosswalk rerun, 2026-09-18)
+
+Comparing only the matches the database would use, that is excluding rows already flagged
+ambiguous:
+
+| | Before | After |
+|---|---|---|
+| Bridge-eligible matches | 6,531 | 6,459 |
+| **Redirected to a different hospital** | | **0** |
+| Dropped | | 76 |
+| Newly eligible | | 4 |
+
+The 76 dropped are the intended target: **mean score 0.68, and 68 of the 76 scored below 0.80**.
+The other 38 of the original 114 weak matches survived, because a ZIP or city did corroborate them.
+
+Blocking keys behind the accepted name-tier matches:
+
+| Key | Facilities | Mean score |
+|---|---|---|
+| ZIP | 695 | 0.93 |
+| City | 65 | 0.73 |
+| State only (address carrying the match) | 305 | 0.98 |
+
+CCN coverage after the rerun: **3,871 of 5,419 roster CCNs (71.4%)**.
+
+### What this does not fix
+
+- **Sibling hospitals in one system remain ambiguous, by design.** "Garnet Health Medical Center
+  Catskills" matches both Garnet Health Callicoon and Garnet Health Harris at a similarity of
+  exactly 1.00, margin 0.00, and the file carries no city or address. The matcher refuses these
+  rather than guessing; they are flagged `ccn_ambiguous` and never enter the bridge. An audit that
+  compares raw crosswalk rows will see such a pair "change" between runs, because only the order of
+  the rejected candidates moved.
+- **Phone number would block better than city and is unavailable.** The CMS roster carries one; an
+  MRF does not, in the CMS v3.0 schema, in `cms-hpt.txt`, or in Trilliant's facility table. There
+  is nothing on the file side to compare against, and the same is true of any identifier absent
+  from the file.
+- **The floor is a judgement, not a measurement.** 0.75 for a name-only match is the gap between
+  "these two names look alike" and "these two names look alike and nothing else about them agrees".
+  No labelled set of true matches exists here to calibrate it against.
