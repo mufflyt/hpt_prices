@@ -9,14 +9,23 @@ Grouped by date. There is no package version.
   files). **518 hospitals post a delivery price only as APR-DRG severity 1**, and **355 of them
   pass the labour-and-delivery filter** and reach the analysis; the analysis now reports both, the
   first being counted before that filter.
-- Those hospitals are overwhelmingly a Medicaid population and price lower: the Medicaid vaginal
-  sample goes from 726 to 1,073 hospitals (+48%) and its median from $5,396 (1.08x Medicare) to
-  $4,631 (0.94x). Commercial gains 32 hospitals and moves -0.4%.
+- **The two code systems do not price the same product.** At hospitals posting both, an APR-DRG
+  severity-1 price is about half the MS-DRG price for the same delivery: median ratio 0.45
+  (Medicaid vaginal), 0.52 (commercial vaginal), 0.54 and 0.61 for cesarean, IQR roughly 0.28 to
+  0.89. It holds within case-rate rows, so it is not a methodology artefact, and the spread is too
+  wide for a single calibration factor. The fallback build's lower medians therefore mix a
+  different population of hospitals with a code system that prices lower at the same hospital, and
+  its price levels are not quoted anywhere.
 - The cesarean premium is 1.42 on both builds, across a Medicaid sample half again as large. A
   within-hospital ratio that lands in the same place on a different set of hospitals is evidence
   that 1.42 is a contracting convention rather than an artefact of coverage.
 
 ### Fixed
+- `rate_row_filter_sql()` drops per-diem APR-DRG rows. The per-diem conversion multiplies by a
+  DRG's geometric mean length of stay, which CMS publishes for MS-DRGs only: MS-DRG per-diem rows
+  convert at 94.7% and APR-DRG rows at 0%, so a per-day amount was being compared against a stay
+  price. Worth $5 on the Medicaid median, which is how the audit established that per-diem rows
+  were not what makes the two code systems differ.
 - `tools/post_extract_refresh.sh` ran validation second; `docs/appendix.md` section L says it runs
   last, because it compares the saved medians against the database. Running it before 11 rebuilt
   them produced a spurious "49,461 saved rows vs 49,773 recomputed" warning about the runbook's

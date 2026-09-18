@@ -127,46 +127,57 @@ obstetric codes.
 - `birth3_vaginal_maps`: commercial and Medicaid maps. States with fewer than 5 hospitals are
   suppressed.
 
-## 4b. What the APR-DRG fallback adds (2026-09-18 extract)
+## 4b. What the APR-DRG fallback adds, and what it cannot be used for (2026-09-18 extract)
 
 The 2026-07-21 lake carries **11,269 APR-DRG 540-1 rows across 1,138 files** and **10,989 APR-DRG
-560-1 rows across 1,136 files**. **518 hospitals post a delivery price only as APR-DRG severity
+560-1 rows across 1,136 files**. **517 hospitals post a delivery price only as APR-DRG severity
 1**, and **355 of those survive the labour-and-delivery filter** (CMS SM-7, no psychiatric
-hospitals or Rural Emergency Hospitals) to enter the analysis. 355 is the number to quote for
-coverage: the other 163 would be dropped whatever grouper they used.
+hospitals or Rural Emergency Hospitals) to enter the analysis. 355 is the coverage figure: the
+other 162 would be dropped whatever grouper they used.
 
-| | MS-DRG only | With the fallback | Change |
+### The prices are not interchangeable
+
+At hospitals that post BOTH code systems, the APR-DRG severity-1 price is about **half** the
+MS-DRG price for the same delivery:
+
+| Comparison (same hospital, same payer) | Hospitals | Median APR / MS-DRG | IQR |
 |---|---|---|---|
-| Vaginal 807, Medicaid: hospitals | 726 | 1,073 | **+347 (+48%)** |
-| Hospitals reached only via APR-DRG | 0 | 355 | of 518 that post one |
-| Vaginal 807, Medicaid: median | $5,396 | $4,631 | -14% |
-| Vaginal 807, Medicaid: x Medicare | 1.08x | **0.94x** | crosses below Medicare |
-| Cesarean 788, Medicaid: hospitals | 723 | 1,071 | +348 |
-| Cesarean 788, Medicaid: median | $7,643 | $6,946 | -9% |
-| Vaginal 807, commercial: hospitals | 1,475 | 1,507 | +32 |
-| Vaginal 807, commercial: median | $8,577 | $8,546 | -0.4% |
+| Vaginal, Medicaid (560-1 vs 807) | 356 | **0.45** | 0.28 to 0.85 |
+| Vaginal, commercial | 345 | **0.52** | 0.27 to 0.89 |
+| Cesarean, Medicaid (540-1 vs 788) | 364 | **0.54** | |
+| Cesarean, commercial | 352 | **0.61** | |
 
-**The hospitals only APR-DRG reaches are overwhelmingly a Medicaid population, and they price
-lower.** Adding them moves the national Medicaid delivery price from just above the Medicare
-benchmark to just below it.
+This is not a methodology artefact. It holds within case-rate rows (Medicaid median $2,934 for
+560-1 against $4,364 for 807) and the spread is wide, so no single calibration factor would fix
+it. Whether APR-DRG severity 1 is simply a narrower, lower-acuity product than "MS-DRG without
+CC/MCC", or hospitals post something closer to a base rate on those lines, is not settled here.
 
-The states they sit in are consistent with the mechanism: the APR-only Medicaid rows concentrate
-in TX (98), FL (86), NY (76), CA (50), MN (50), WI (36), IL (34), OH (30), AZ (26) and MI (26),
-which are states widely reported to pay Medicaid inpatient claims by APR-DRG. That pattern is
-consistent with the explanation rather than proof of it: this project has not verified each
-state's Medicaid payment method against a primary source, and doing so is the check that would
-settle it.
+**So the fallback's price levels must not be quoted.** The build reports a Medicaid vaginal median
+of $4,626 at 0.94x Medicare against $5,396 at 1.08x for MS-DRG only, and that fall mixes two
+things that cannot be separated from these data: a different population of hospitals, and a code
+system that prices lower at the same hospital. The earlier draft of this section read that 0.94x
+as a coverage result. It is not one.
 
-**The cesarean premium does not move.** It is 1.42 on the MS-DRG build and 1.42 with the fallback
-(Medicaid 1.420 against 1.422), across a Medicaid sample 48% larger. A within-hospital ratio
-computed on a different set of hospitals landing in the same place is the strongest evidence yet
-that the 1.42 is a contracting convention rather than an artefact of which hospitals we can see.
+### What the fallback IS good for
 
-**What it does not license.** The two groupers assign cases differently, and the Medicare
-benchmark is still the MS-DRG one, so a fallback price divided by that benchmark is an
-approximation. The Medicaid figure of 0.94x should be read as "adding the APR-DRG hospitals pulls
-the national Medicaid price below the Medicare benchmark", not as a like-for-like national
-estimate. The headline numbers in section 4 remain MS-DRG only.
+- **Counting who is invisible.** 355 delivery hospitals have no MS-DRG delivery price at all, and
+  the MS-DRG-only analysis silently omits them. Their Medicaid concentration matters even if their
+  price levels are not comparable: the APR-only Medicaid rows sit in TX (98), FL (86), NY (76), CA
+  (50), MN (50), WI (36), IL (34), OH (30), AZ (26) and MI (26), states widely reported to pay
+  Medicaid inpatient claims by APR-DRG. This project has not verified any state's payment method
+  against a primary source; that is the check that would settle the mechanism.
+- **Testing the cesarean premium on a different sample.** The premium is a ratio taken WITHIN a
+  hospital, so a level difference affecting both codes cancels. It is 1.42 on the MS-DRG build and
+  1.42 with the fallback, across a Medicaid sample half again as large. That is a real robustness
+  result and the strongest evidence yet that 1.42 is a contracting convention.
+
+### Per-diem APR rows are dropped
+
+The per-diem conversion multiplies a daily rate by the DRG's geometric mean length of stay, which
+CMS publishes for MS-DRGs only. MS-DRG per-diem rows convert at 94.7%; APR-DRG rows converted at
+0%, so a per-day amount was being compared against a stay price. `rate_row_filter_sql()` now drops
+per-diem APR-DRG rows. It moved the Medicaid median by $5 (from $4,631 to $4,626), which is how
+the audit established that per-diem rows were not what made the two code systems differ.
 
 ## 5. Midwifery presence around hospitals (analysis/17, exploratory)
 

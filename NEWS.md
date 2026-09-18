@@ -11,10 +11,11 @@ those prices last night without knowing how many hospitals it would reach. The a
 they are not a random sample: they are overwhelmingly hospitals in states whose Medicaid programs
 pay that way, and they charge less than the hospitals we could already see.
 
-**Reading them moves the national Medicaid delivery price below Medicare.** Counting them takes the
-Medicaid sample from 726 hospitals to 1,073, and the median vaginal delivery from $5,396 to $4,631,
-which is just under what Medicare's formula would pay rather than just over. The commercial figure
-barely moves.
+**But their prices cannot be read as the same number.** Checking hospitals that publish in both code
+systems showed the other system's price is about half the usual one for the same delivery. So the
+lower average that appears when you include them is partly a different set of hospitals and partly a
+different way of writing the price, and those two cannot be separated here. We are not quoting that
+average anywhere.
 
 **The cesarean premium does not budge.** A cesarean still costs 1.42 times a vaginal delivery at the
 same hospital, on a Medicaid sample half again as large. A ratio that lands in exactly the same place
