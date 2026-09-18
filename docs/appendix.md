@@ -595,7 +595,8 @@ Full methods: [`docs/childbirth_methods.md`](childbirth_methods.md). Design of t
   788 at a hospital posting no MS-DRG delivery price, never overwriting one, labelling each row
   `price_source`, and writing `birth_apr_*` files so the MS-DRG build is untouched.
 
-  Measured on the 2026-09-18 extract: **518 hospitals post a delivery price only as APR-DRG**.
+  Measured on the 2026-09-18 extract: **518 hospitals post a delivery price only as APR-DRG**, of
+  which **355 pass the labour-and-delivery filter** and reach the analysis.
   They are overwhelmingly a Medicaid population and they price lower, so the fallback raises the
   Medicaid vaginal-delivery sample from 726 to 1,073 hospitals (+48%) and moves that median from
   $5,396 (1.08x Medicare) to $4,631 (0.94x). Commercial barely moves (+32 hospitals, -0.4%). The

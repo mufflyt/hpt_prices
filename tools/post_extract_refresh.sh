@@ -28,9 +28,12 @@ log_dir="${HPT_REFRESH_LOGS:-/tmp/hpt_refresh_$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$log_dir"
 export HPT_DUCKDB_MEMORY="${HPT_DUCKDB_MEMORY:-3GB}"
 
+# Validation runs LAST, as docs/appendix.md section L says: it compares the
+# saved medians against the database, so running it before 11 rebuilt them
+# reported "49,461 saved rows vs 49,773 recomputed" -- a warning about the
+# runbook's own order, not about the data.
 stages=(
   09_build_database
-  10_validate
   11_state_medians
   12_addon_value
   13_ownership_prices
@@ -38,6 +41,7 @@ stages=(
   15_geographic_figures
   16_childbirth_prices
   17_midwifery_presence
+  10_validate
 )
 
 echo "Refreshing after the extract. Logs: $log_dir"
@@ -51,7 +55,7 @@ for stage in "${stages[@]}"; do
     failed+=("$stage")
     # 10 is a report, not a gate: a validation warning must not stop the refresh.
     # Anything else feeds the stages after it, so stop rather than mix builds.
-    [ "$stage" = "10_validate" ] || break
+    [ "$stage" = "10_validate" ] || break   # 10 runs last, so nothing depends on it
   fi
 done
 

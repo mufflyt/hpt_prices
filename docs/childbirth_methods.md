@@ -130,12 +130,15 @@ obstetric codes.
 ## 4b. What the APR-DRG fallback adds (2026-09-18 extract)
 
 The 2026-07-21 lake carries **11,269 APR-DRG 540-1 rows across 1,138 files** and **10,989 APR-DRG
-560-1 rows across 1,136 files**. Of the hospitals those files belong to, **518 post a delivery
-price only as APR-DRG severity 1** and are invisible to an MS-DRG-only analysis.
+560-1 rows across 1,136 files**. **518 hospitals post a delivery price only as APR-DRG severity
+1**, and **355 of those survive the labour-and-delivery filter** (CMS SM-7, no psychiatric
+hospitals or Rural Emergency Hospitals) to enter the analysis. 355 is the number to quote for
+coverage: the other 163 would be dropped whatever grouper they used.
 
 | | MS-DRG only | With the fallback | Change |
 |---|---|---|---|
 | Vaginal 807, Medicaid: hospitals | 726 | 1,073 | **+347 (+48%)** |
+| Hospitals reached only via APR-DRG | 0 | 355 | of 518 that post one |
 | Vaginal 807, Medicaid: median | $5,396 | $4,631 | -14% |
 | Vaginal 807, Medicaid: x Medicare | 1.08x | **0.94x** | crosses below Medicare |
 | Cesarean 788, Medicaid: hospitals | 723 | 1,071 | +348 |
@@ -144,10 +147,15 @@ price only as APR-DRG severity 1** and are invisible to an MS-DRG-only analysis.
 | Vaginal 807, commercial: median | $8,577 | $8,546 | -0.4% |
 
 **The hospitals only APR-DRG reaches are overwhelmingly a Medicaid population, and they price
-lower.** That is what the mechanism predicts rather than a surprise: a hospital posts APR-DRG
-prices because its state's Medicaid program pays by APR-DRG, so the missing hospitals were
-concentrated in exactly those states. Adding them moves the national Medicaid delivery price from
-just above the Medicare benchmark to just below it.
+lower.** Adding them moves the national Medicaid delivery price from just above the Medicare
+benchmark to just below it.
+
+The states they sit in are consistent with the mechanism: the APR-only Medicaid rows concentrate
+in TX (98), FL (86), NY (76), CA (50), MN (50), WI (36), IL (34), OH (30), AZ (26) and MI (26),
+which are states widely reported to pay Medicaid inpatient claims by APR-DRG. That pattern is
+consistent with the explanation rather than proof of it: this project has not verified each
+state's Medicaid payment method against a primary source, and doing so is the check that would
+settle it.
 
 **The cesarean premium does not move.** It is 1.42 on the MS-DRG build and 1.42 with the fallback
 (Medicaid 1.420 against 1.422), across a Medicaid sample 48% larger. A within-hospital ratio

@@ -5,7 +5,8 @@ methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
 ## 2026-09-18 (the hospitals we could not see were mostly Medicaid)
 
-**518 hospitals post a delivery price only in the other code system.** We added the ability to read
+**518 hospitals post a delivery price only in the other code system, and 355 of them deliver
+babies.** We added the ability to read
 those prices last night without knowing how many hospitals it would reach. The answer is 518, and
 they are not a random sample: they are overwhelmingly hospitals in states whose Medicaid programs
 pay that way, and they charge less than the hospitals we could already see.

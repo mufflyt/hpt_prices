@@ -74,7 +74,7 @@ all_prices <- ownership_hospital_prices(db_path, codes = price_codes, payer_type
   add_apr_drg_delivery_prices()
 if (use_apr_drg) {
   n_apr <- dplyr::n_distinct(all_prices$ccn[all_prices$price_source == "apr_drg"])
-  base::message("APR-DRG fallback on: ", n_apr, " hospitals contribute a delivery price only as APR-DRG severity 1")
+  base::message("APR-DRG fallback on: ", n_apr, " hospitals post a delivery price only as APR-DRG severity 1")
 }
 prices <- dplyr::filter(all_prices, !.data$ccn %in% no_ld)
 base::message("Delivery prices: ", dplyr::n_distinct(prices$ccn), " hospitals after dropping ",
@@ -119,6 +119,12 @@ medicare_check <- ownership_hospital_prices(db_path, codes = codes, payer_types 
                    p25 = stats::quantile(.data$ratio, 0.25, names = FALSE), p75 = stats::quantile(.data$ratio, 0.75, names = FALSE),
                    .groups = "drop")
 
+if (use_apr_drg) {
+  # the count above is taken before the labour-and-delivery filter; this is the
+  # number that actually reaches the medians, and it is the one to quote
+  base::message("APR-DRG fallback: ", dplyr::n_distinct(ratios$ccn[ratios$price_source == "apr_drg"]),
+                " of them survive the labour-and-delivery filter and enter the analysis")
+}
 write_csv_atomic(ratios, out_file("hospital_prices.csv"))
 write_csv_atomic(national, out_file("national_summary.csv"))
 write_csv_atomic(states, out_file("state_summary.csv"))

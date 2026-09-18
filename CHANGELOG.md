@@ -6,7 +6,9 @@ Grouped by date. There is no package version.
 
 ### Measured
 - The re-extract carries 11,269 APR-DRG 540-1 rows (1,138 files) and 10,989 560-1 rows (1,136
-  files). **518 hospitals post a delivery price only as APR-DRG severity 1.**
+  files). **518 hospitals post a delivery price only as APR-DRG severity 1**, and **355 of them
+  pass the labour-and-delivery filter** and reach the analysis; the analysis now reports both, the
+  first being counted before that filter.
 - Those hospitals are overwhelmingly a Medicaid population and price lower: the Medicaid vaginal
   sample goes from 726 to 1,073 hospitals (+48%) and its median from $5,396 (1.08x Medicare) to
   $4,631 (0.94x). Commercial gains 32 hospitals and moves -0.4%.
@@ -15,6 +17,10 @@ Grouped by date. There is no package version.
   that 1.42 is a contracting convention rather than an artefact of coverage.
 
 ### Fixed
+- `tools/post_extract_refresh.sh` ran validation second; `docs/appendix.md` section L says it runs
+  last, because it compares the saved medians against the database. Running it before 11 rebuilt
+  them produced a spurious "49,461 saved rows vs 49,773 recomputed" warning about the runbook's
+  own order. Validation now runs last.
 - The fallback run wrote the same filenames as the MS-DRG run, so whichever went last owned
   `output/`. An impact table then compared an MS-DRG "before" with an APR-DRG "after" and reported
   a 14% fall in the Medicaid delivery price that was really 347 extra hospitals. The fallback now
