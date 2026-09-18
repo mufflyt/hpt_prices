@@ -256,6 +256,7 @@ Giving each health system one vote per state (system-weighting sensitivity):
 | `docs/childbirth_methods.md` | Delivery prices, the Medicare IPPS benchmark, the cesarean-vaginal facility price differential, and midwifery supply |
 | `docs/childbirth_analytic_spec.md` | Locked design of the NTSV cesarean and midwife supply analysis, with the exact CDC WONDER exports |
 | `docs/turquoise_pricepoints.md` | Turquoise Health's delivery-price study: data access, methods, and how it compares |
+| `docs/trilliant_permission_request.md` | Draft request to publish aggregate results, and the boundary it would not cross (unsent) |
 
 ## Tests
 

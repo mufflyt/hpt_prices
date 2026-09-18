@@ -54,7 +54,9 @@ Every download writes a provenance CSV (URL, release, sha256, time) next to the 
 
 **Trilliant terms of service.** Trilliant requires attribution (2.2(b)) and forbids automated
 scraping of its site (2.3(xii)) and building rate data for redistribution to third parties (2.3(i),
-2.3(iii)). The project therefore:
+2.3(iii)). A draft request to publish aggregate results, and the boundary it would not cross, is in
+[`docs/trilliant_permission_request.md`](trilliant_permission_request.md); nothing has been sent.
+The project therefore:
 
 - reads only the consolidated download, never the per-hospital pages;
 - keeps every extracted rate, median, and derived table under `HPT_DATA_DIR` (`.gitignore`
