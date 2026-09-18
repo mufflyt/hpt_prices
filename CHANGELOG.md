@@ -2,6 +2,20 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-18 (a two-digit year dated a file to the year 26)
+
+### Fixed
+- `normalize_mrf_date()` compared the parsed year as TEXT against "1990", and "26" > "1990" is
+  TRUE because "2" sorts after "1". On Linux, where `%Y` accepts a two-digit year, a hospital
+  writing "1/2/26" got `last_updated_on = "26-01-02"`; macOS refused the two-digit year and fell
+  through to `%y`, so the same file dated differently on the two platforms. The year is now
+  compared as a number against 1990-2100.
+- `%m/%d/%y` is tried only where the year really is two digits. Otherwise "1/2/1899", which fails
+  the range check under `%m/%d/%Y`, had its "18" read by `%y` and became 2018.
+
+Found by a test written the day before, which passed locally and failed in CI: the platforms
+disagreed, which is what a date-parsing bug looks like from the outside.
+
 ## 2026-09-17 (figures for the NTSV result, ready before the data)
 
 ### Added
