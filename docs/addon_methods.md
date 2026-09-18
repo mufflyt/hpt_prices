@@ -277,7 +277,12 @@ USD per add-on.
   for Medicaid (not computed for Medicare or Medicare Advantage).
 - **Top 3 one-way drivers (commercial):**
   1. The device's paid share: -$1,445 to +$665. This is the only parameter that can
-     flip the sign.
+     flip the sign, **and it is provisional**: no published source gives the share a
+     commercial payer actually pays for a device supplied at an inpatient surgery, so
+     the base value reads a UnitedHealthcare policy exhibit rather than observed
+     payments. The headline conclusion below holds at that assumed value and not
+     beyond its range. Of the 13 parameter ranges that flip the sign anywhere in the
+     model, the three largest are all provisional.
   2. Utilization u (0 to 0.75): -$1,059 to -$1,584.
   3. Device acquisition cost: -$1,051 to -$1,356.
   For Medicaid the order is the same: device carve-out (up to -$158), u, device cost.

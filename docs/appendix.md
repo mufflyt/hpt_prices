@@ -34,6 +34,7 @@ rates stay on the data drive (section A).
 - [L. Reproducibility](#l-reproducibility)
 - [M. Childbirth prices and midwifery supply](#m-childbirth-prices-and-midwifery-supply)
 - [N. CCN matching: an audit and what it changed](#n-ccn-matching-an-audit-and-what-it-changed)
+- [O. Ownership and add-on: an audit and what it changed](#o-ownership-and-add-on-an-audit-and-what-it-changed)
 
 ## A. Data sources and terms
 
@@ -679,3 +680,41 @@ CCN coverage after the rerun: **3,871 of 5,419 roster CCNs (71.4%)**.
 - **The floor is a judgement, not a measurement.** 0.75 for a name-only match is the gap between
   "these two names look alike" and "these two names look alike and nothing else about them agrees".
   No labelled set of true matches exists here to calibrate it against.
+
+## O. Ownership and add-on: an audit and what it changed
+
+An audit on 2026-09-18, in the same spirit as section N: what does each analysis rest on, and does
+any flag get computed and then ignored?
+
+### Ownership: clean, with one thin-evidence gap
+
+- **Both flags are read.** `exploratory` and `payment_comparison` filter the results and the figure
+  in `analysis/13`, and `docs/ownership_methods.md` explains them. This is what section N found the
+  matcher failing to do.
+- **No plotted point hides a missing interval.** Of the 93 rows the forest plot draws, 86 carry a
+  wild cluster restricted bootstrap interval and the rest are exploratory and drawn deliberately
+  without one. Zero rows plot with an interval silently absent. (155 rows in the results CSV carry
+  only CRV1 intervals; they belong to definitions and terms the figure never draws, since the
+  bootstrap runs on the focal contrasts.)
+- **The gap:** `exploratory` counted health SYSTEMS, which is what the inference depends on, and
+  said nothing about how many hospitals carried the price. Six estimates drawn from 8 or 9
+  hospitals across 5 systems cleared that bar and were reported like any other row, including a
+  +108% Medicaid difference for 58100.
+
+  A group with fewer than `min_treated_hospitals()` (10) hospitals is now exploratory as well, and
+  the note says which bar the group failed, since too few systems and too few hospitals are
+  different problems. One of the 93 plotted rows changes.
+
+### Add-on: the conclusion rests on a parameter with no source
+
+- **Provenance is complete.** All 54 parameters carry a source; 20 are flagged `provisional`,
+  each with its reasoning recorded.
+- **But the widest bar is provisional.** `pay_frac_A_item`, the share of the IUD device price a
+  payer actually pays, swings net value by **$2,109**, four times the next parameter, and its range
+  **flips the sign**: -$1,445 to +$665. The headline "-$1,234 per add-on" holds at the assumed
+  value and not beyond it. Thirteen parameter ranges flip the sign somewhere in the model, and the
+  three largest are all provisional.
+- **What changed:** the tornado figure now marks a provisional parameter with a dagger and says in
+  its caption how many of the drawn bars are provisional, and `docs/addon_methods.md` names the
+  device paid share as provisional in the same sentence that calls it the only sign-flipper. The
+  model was already doing the right thing and saying so quietly; this makes it hard to miss.
