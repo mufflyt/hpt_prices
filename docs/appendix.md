@@ -496,6 +496,16 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
   (excluded from medians); the thin self-pay payer rows disagree with the cash price for gastric
   bypass (43644), so the headline uses the cash price; CCN coverage 62% (threshold 70%).
 - **Skipped:** the raw re-check (network opt-in).
+- **Independent recomputation** (`integrity_median_recomputation`): a published median is rebuilt
+  from `v_hospital_rate` by a separate route -- contract median, then hospital, then the median
+  across hospitals -- and compared with the file. A check that reads the median query's own output
+  proves only that a file was written. Colonoscopy commercial reproduces at $2,220.4775 across
+  2,312 hospitals, and EMB, Medicaid colonoscopy and DRG 621 reproduce to the cent as well.
+
+  Writing it exposed a trap worth recording: `rate_row_filter_sql()` does NOT include the
+  plausibility flag, which the medians apply separately at the contract stage. A recomputation
+  that forgets it quietly readmits the $0.01 placeholders and the 9-filled sentinels, and lands
+  $0.27 off.
 
 ## L. Reproducibility
 
