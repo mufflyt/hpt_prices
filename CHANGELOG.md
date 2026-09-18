@@ -2,6 +2,34 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-17 (a lake scan that survives being interrupted)
+
+### Added
+- **Stage 1 of the Trilliant extract is resumable.** It reads `standard_charge_details` through
+  the table's own parquet files (`ducklake_data_file`: 246 files, 67 GB, 7.7 billion rows) in
+  batches of `HPT_STAGE_BATCH` files (default 20), writing one part per batch under
+  `stage_parts/` and appending to `stage_parts/_manifest.csv` only after DuckDB closes the file.
+  An interrupted scan resumes at the first unfinished batch; a part interrupted mid-write is
+  rewritten, never half-read.
+- Per-batch progress in the log: files done, target lines kept, minutes, and the share of the lake
+  scanned. The single scan reported nothing until it finished.
+- `trilliant_lake_data_files()` refuses to list files when reading them alone would be incomplete
+  (delete files, inlined rows, or a file the metadata names but the disk lacks) and the extract
+  falls back to the single scan.
+
+### Why
+An OOM kill lost 61% of a scan with nothing to resume from, and the next attempt ran for hours
+with no way to tell how far it had got. A scan that cannot be interrupted safely is a scan that
+costs an evening every time anything goes wrong.
+
+### Measured, and NOT the cause
+- The drive reads at 426 MB/s on a 10 Gb/s link, falling to 63 MB/s after hours of sustained
+  reading (the enclosure appears to throttle).
+- Per file, the scan costs 16-23 s whichever prefilter is used, so roughly 80 minutes of real work
+  for the whole lake. A rewritten prefilter that compared raw spellings instead of normalizing
+  looked 22x faster but was measuring the OS page cache; run fairly it was the same speed, and it
+  silently dropped about 0.4% of matching rows. It was not kept.
+
 ## 2026-09-17 (find the data drive whatever number macOS mounts it under)
 
 ### Fixed

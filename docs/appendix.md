@@ -259,6 +259,20 @@ otherwise NULL. Matched files take the state from the CMS roster.
   `files_rates_above_gross.csv`);
 - own-crawl files that duplicate a Trilliant file (`cross_source_duplicate_file_ids()`).
 
+**Stage 1 is resumable.** The lake scan reads `standard_charge_details` through its own parquet
+files (246 of them, 67 GB, 7.7 billion rows, listed in DuckLake's `ducklake_data_file`), in
+batches of `HPT_STAGE_BATCH` files (default 20). Each batch writes one part under
+`stage_parts/` and is recorded in `stage_parts/_manifest.csv` only after DuckDB closes the file,
+so an interrupted scan resumes at the first unfinished batch instead of starting over, and a
+half-written part is rewritten rather than half-read. The log reports files done and rows kept per
+batch; before this, the only progress signal was a staging file's size.
+
+Reading the files directly is only valid when nothing else holds rows for the table:
+`trilliant_lake_data_files()` returns NULL, and the single scan runs instead, if the table has
+delete files, if its inlined-data table holds rows, or if any listed file is missing. Note that
+DuckLake registers an inlined-data table for every table whether or not it holds rows, so the
+check counts rows rather than trusting the registration.
+
 **E9. Per-diem MS-DRG rates** (`per_diem_case_multiple()`, `per_diem_note()`). A per-diem contract
 prices one day of an inpatient stay. A hospital paid per diem therefore looked several times
 cheaper than one paid by case rate for the same DRG.
