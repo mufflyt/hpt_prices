@@ -15,6 +15,34 @@ Grouped by date. There is no package version.
 
 Found by a test written the day before, which passed locally and failed in CI: the platforms
 disagreed, which is what a date-parsing bug looks like from the outside.
+## 2026-09-17 (conflicted CCN matches stop counting; name matches get a hard key)
+
+### Fixed
+- **A conflicted match no longer credits the file to that hospital.** `ccn_conflict` marks a file
+  whose URL-derived CCN is not among the CCNs its NPI points to. The flag was recorded and never
+  read, so 17 such files, covering 16 hospitals and 17,877 rate rows, fed the medians as if the
+  evidence agreed. `v_hospital_rate` now joins the bridge only where the flag is false: the rates
+  stay, counted as their own unit, and are no longer attributed to a disputed CCN. The bridge
+  keeps the row and the flag, so the conflict is auditable rather than deleted. 14 of the 16
+  hospitals have no other file and lose their CCN identity.
+
+### Changed
+- **The name tier blocks on a hard key before scoring.** State alone left every hospital in a
+  large state competing on name similarity, and the tier accepts scores as low as 0.60: 114 files
+  matched below 0.80, covering 94 hospitals, 50 of them with no other file, and 2.6% of all rate
+  rows. `block_ccn_candidates()` now narrows same-state candidates to those sharing the facility's
+  ZIP, or failing that its city. A candidate whose key is unknown is never dropped, since a
+  missing ZIP cannot contradict one. `ccn_block_key` records which key was used.
+- A match resting on the name alone -- no street address, nothing but the state agreeing -- must
+  clear 0.75 rather than 0.60. A file carrying a street address is not penalised: a genuine match
+  with a generic name scores 0.71 on an exact street match alone, and rejecting it would trade one
+  error for another.
+- ZIPs are read from the roster's `zip_code` or from the tail of a facility's free-text address,
+  with a five-digit run that is not at the end treated as a street number, not a ZIP.
+
+### Not done
+Phone number would block better than city and is unavailable: the CMS roster carries one, an MRF
+does not, so there is nothing to compare against.
 
 ## 2026-09-17 (figures for the NTSV result, ready before the data)
 
