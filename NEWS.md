@@ -3,6 +3,23 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-18 (the national midwife list was on the machine all along)
+
+**Eleven states are back.** The midwife list this project used covered 40 states, so any hospital
+whose 30-mile area reached New Jersey, Delaware, Rhode Island or eight others had no midwife
+measure at all, and 188 of 1,539 delivery hospitals dropped out of that analysis. The national
+list turned out to be sitting on this computer, verified against the fingerprint its own project
+records. All 188 hospitals now have a count, and the analysis covers all 50 states and DC.
+
+**This is not only about the states that were missing.** The national list also holds 272 more
+midwives in states the old one already covered, so the midwife count changed for 729 hospitals
+that were never excluded. The typical hospital now has 28 midwives within 30 miles rather than
+25. Earlier midwifery numbers should not be compared hospital by hospital with these.
+
+**The check that used to exclude those hospitals is still there.** It now finds nothing to
+exclude, and the run stops outright if a future list ever covers less ground, so the old silent
+failure, counting real midwives across a border as zero, cannot come back unnoticed.
+
 ## 2026-09-18 (the hospitals we could not see were mostly Medicaid)
 
 **518 hospitals post a delivery price only in the other code system, and 355 of them deliver
