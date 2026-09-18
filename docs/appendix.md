@@ -123,9 +123,24 @@ name, address, license, and NPI, never by CCN. Tiers, first success wins:
 3. `license`: license number plus state, only with a caller-supplied table (no free national
    license-to-CCN source exists).
 4. `name_address`: name, street, and city similarity against roster hospitals in the same state,
-   accepted only above a threshold with a clear margin over the runner-up.
+   accepted only above a threshold with a clear margin over the runner-up. Before scoring, the
+   same-state candidates are narrowed by a hard key: the facility's ZIP where one agrees,
+   otherwise its city (`block_ccn_candidates()`). A candidate whose key is unknown is never
+   dropped, because a missing ZIP cannot contradict one. `ccn_block_key` records which key
+   narrowed the field. A match resting on the name alone, with no street address and nothing but
+   the state agreeing, must clear a higher score (0.75 against the usual 0.60); a file that
+   carries a street address is not penalised, since the address is scored by containment and
+   zeroed outright when house numbers differ. Phone number would be a better block than either
+   and is unavailable: the CMS roster carries one, an MRF does not.
 
-When a URL match and an NPI match disagree, the row is flagged `ccn_conflict`. The database bridge
+
+When a URL match and an NPI match disagree, the row is flagged `ccn_conflict`, and that file is
+not attributed to the disputed CCN: `v_hospital_rate` joins the bridge only where the flag is
+false, so the file's rates count as their own unit in a state median rather than being credited
+to a hospital the evidence disputes. The bridge keeps the row and the flag, so the conflict stays
+auditable. As of the 2026-09-13 build this affects 17 files, 16 hospitals and 17,877 rate rows;
+14 of those hospitals have no other file, so they lose their CCN identity while their rates
+remain in the state totals. The database bridge
 keeps unambiguous matches only, one row per (file, CCN), and only roster CCNs. CCNs linked per tier
 (a CCN can be reached by more than one file): URL 2,794, name/address 521, NPI 165. In total
 3,371 of 5,419 roster CCNs (62%) have prices.
