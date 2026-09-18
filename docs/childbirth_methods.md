@@ -172,6 +172,13 @@ The design is locked in [`childbirth_analytic_spec.md`](childbirth_analytic_spec
   - a quasi-binomial logit.
 - **Price step:** the implied facility price differential is arithmetic on the primary slope.
   Each payer's share of NTSV births is priced at the local DRG 788 minus 807 price.
+- **Figures:**
+  - `birth5_ntsv_county_map`: the NTSV cesarean rate by county of residence. Counties WONDER does
+    not report are drawn grey, so the coverage limit is visible rather than implied.
+  - `birth6_ntsv_supply_vs_rate`: midwife supply against the NTSV rate, one point per county sized
+    by NTSV births. Its line is the **unadjusted** weighted fit and is labelled as such, with the
+    adjusted within-state estimate printed beside it: the two can point in different directions,
+    and a plot whose line quietly contradicts the number beside it is worse than either alone.
 
 **Why exports by hand.**
 - The NCHS public-use microdata has no geography.

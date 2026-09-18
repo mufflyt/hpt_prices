@@ -2,6 +2,22 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-17 (figures for the NTSV result, ready before the data)
+
+### Added
+- `ntsv_county_map()`: the NTSV cesarean rate by county of residence, keyed by FIPS through
+  `maps::county.fips` (mysterymaps draws states, not counties). Counties CDC WONDER does not
+  report, which is most of them, are drawn in the missing-data grey so the coverage limit shows.
+- `ntsv_supply_rate_plot()`: midwife supply against the NTSV rate, one point per county, area
+  proportional to NTSV births. The line is the births-weighted BIVARIATE fit and says so; the
+  adjusted within-state estimate is printed beside it. The two can point in opposite directions,
+  because the model's work is mostly within states, and a plot whose line contradicts the number
+  beside it is worse than either alone.
+- `analysis/18` writes both as `birth5_ntsv_county_map` and `birth6_ntsv_supply_vs_rate`.
+- `reference/census_cenpop/CenPop2020_Mean_CO.txt` is now downloaded into the data directory: it
+  had only ever been fetched inside a temporary smoke-test directory, so the real run would have
+  failed on it. With it, every analysis/18 input except the WONDER exports is present.
+
 ## 2026-09-17 (a lake scan that survives being interrupted)
 
 ### Added
