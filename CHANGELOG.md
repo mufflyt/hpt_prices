@@ -2,6 +2,32 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-18 (the APR-DRG fallback reaches 518 hospitals, and the two builds stop colliding)
+
+### Measured
+- The re-extract carries 11,269 APR-DRG 540-1 rows (1,138 files) and 10,989 560-1 rows (1,136
+  files). **518 hospitals post a delivery price only as APR-DRG severity 1.**
+- Those hospitals are overwhelmingly a Medicaid population and price lower: the Medicaid vaginal
+  sample goes from 726 to 1,073 hospitals (+48%) and its median from $5,396 (1.08x Medicare) to
+  $4,631 (0.94x). Commercial gains 32 hospitals and moves -0.4%.
+- The cesarean premium is 1.42 on both builds, across a Medicaid sample half again as large. A
+  within-hospital ratio that lands in the same place on a different set of hospitals is evidence
+  that 1.42 is a contracting convention rather than an artefact of coverage.
+
+### Fixed
+- The fallback run wrote the same filenames as the MS-DRG run, so whichever went last owned
+  `output/`. An impact table then compared an MS-DRG "before" with an APR-DRG "after" and reported
+  a 14% fall in the Medicaid delivery price that was really 347 extra hospitals. The fallback now
+  writes `birth_apr_*` files and figures, the two builds sit side by side, and analysis 17 and 18
+  read the unprefixed names so they always see the MS-DRG build rather than whatever ran last.
+- `tools/post_extract_refresh.sh` no longer depends on stage order for that separation, and says
+  where each build's outputs are.
+
+### Rebuild
+- 09 through 17 all ran clean on the new extract: 11,521,371 rates, 4,017 files, 3,368 CCNs.
+- The CCN conflict exclusion and ZIP/city blocking moved the MS-DRG headline numbers by at most
+  0.4%, and the Medicaid vaginal median not at all ($5,396 before and after).
+
 ## 2026-09-18 (thin ownership cells, and a provisional parameter that decides the answer)
 
 ### Changed

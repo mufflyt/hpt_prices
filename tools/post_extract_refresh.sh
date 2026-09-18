@@ -60,12 +60,18 @@ if [ ${#failed[@]} -gt 0 ]; then
 fi
 
 # The childbirth analysis is also run WITH the APR-DRG fallback, which is the
-# measurement the extract was rerun for. Its outputs overwrite 16's, so it runs
-# last and the baseline above is what the documents quote.
+# measurement the extract was rerun for. It writes birth_apr_* files, so the
+# MS-DRG build above stays intact and the two can be compared directly. They
+# used to share filenames, and then whichever run went last owned output/: an
+# impact table compared an MS-DRG "before" against an APR-DRG "after" and
+# reported a 14% fall in the Medicaid delivery price that was really 347 extra
+# hospitals. Stages 17 and 18 read the unprefixed names, so they always see the
+# MS-DRG build rather than whatever ran last.
 if [ -z "${HPT_SKIP_APR:-}" ]; then
   echo "APR-DRG fallback run (counts the hospitals it adds):"
   if HPT_BIRTH_APR_DRG=true Rscript analysis/16_childbirth_prices.R > "$log_dir/16_apr_drg.log" 2>&1; then
     grep -i "APR-DRG fallback" "$log_dir/16_apr_drg.log" || echo "  (no APR-DRG rows found in the extract)"
+    echo "  MS-DRG build: output/birth_*.csv | fallback build: output/birth_apr_*.csv"
   else
     echo "  FAILED (see $log_dir/16_apr_drg.log)"
   fi

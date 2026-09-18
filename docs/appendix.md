@@ -593,7 +593,14 @@ Full methods: [`docs/childbirth_methods.md`](childbirth_methods.md). Design of t
   the APR grouper (`apr_drg_code_types()`); an untyped or MS-DRG-typed three-digit code never
   matches one. `add_apr_drg_delivery_prices()` lets a severity-1 price stand in for MS-DRG 807 or
   788 at a hospital posting no MS-DRG delivery price, never overwriting one, labelling each row
-  `price_source`. How much coverage it adds is not yet measured: it needs a re-extract.
+  `price_source`, and writing `birth_apr_*` files so the MS-DRG build is untouched.
+
+  Measured on the 2026-09-18 extract: **518 hospitals post a delivery price only as APR-DRG**.
+  They are overwhelmingly a Medicaid population and they price lower, so the fallback raises the
+  Medicaid vaginal-delivery sample from 726 to 1,073 hospitals (+48%) and moves that median from
+  $5,396 (1.08x Medicare) to $4,631 (0.94x). Commercial barely moves (+32 hospitals, -0.4%). The
+  cesarean premium stays at 1.42 on both builds, across a Medicaid sample half again as large.
+  Details and caveats: `docs/childbirth_methods.md` section 4b.
 - **Midwifery presence** (`analysis/17`, exploratory):
   - Exposure: midwives within 30 miles per 1,000 births within 30 miles.
   - Result: no association with delivery prices or the premium. The high tertile's commercial

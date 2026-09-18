@@ -3,6 +3,26 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-18 (the hospitals we could not see were mostly Medicaid)
+
+**518 hospitals post a delivery price only in the other code system.** We added the ability to read
+those prices last night without knowing how many hospitals it would reach. The answer is 518, and
+they are not a random sample: they are overwhelmingly hospitals in states whose Medicaid programs
+pay that way, and they charge less than the hospitals we could already see.
+
+**Reading them moves the national Medicaid delivery price below Medicare.** Counting them takes the
+Medicaid sample from 726 hospitals to 1,073, and the median vaginal delivery from $5,396 to $4,631,
+which is just under what Medicare's formula would pay rather than just over. The commercial figure
+barely moves.
+
+**The cesarean premium does not budge.** A cesarean still costs 1.42 times a vaginal delivery at the
+same hospital, on a Medicaid sample half again as large. A ratio that lands in exactly the same place
+on a different set of hospitals is the best sign yet that it reflects how contracts are written.
+
+**A mistake worth naming.** The two versions of the childbirth analysis wrote the same filenames, so
+the second run quietly replaced the first. That made a coverage gain look like a 14% price drop until
+we checked. They now write separate files and can be compared directly.
+
 ## 2026-09-17 (reaching the hospitals that price births a different way)
 
 **Some hospitals were invisible in the birth prices.** Medicaid programs in several states pay by
