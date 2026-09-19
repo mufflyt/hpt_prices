@@ -6,7 +6,7 @@ Three analyses, in the order they depend on each other:
 |---|---|---|
 | `analysis/16_childbirth_prices.R` | What does a hospital birth cost commercial insurers and Medicaid, relative to Medicare, and how much more is a cesarean? | Descriptive results below |
 | `analysis/17_midwifery_presence.R` | Are delivery prices or the cesarean premium different where more midwives practice? | Exploratory; null |
-| `analysis/18_ntsv_midwife_supply.R` | Does midwife supply relate to the NTSV cesarean rate, and what facility price differential would that imply? | Design locked ([`childbirth_analytic_spec.md`](childbirth_analytic_spec.md)); code and preflight ready; waiting on the CDC WONDER exports |
+| `analysis/18_ntsv_midwife_supply.R` | Does midwife supply relate to the NTSV cesarean rate, and what facility price differential would that imply? | **Run 2026-09-19. Negative: the association fails its prespecified placebo, so no effect estimate and no price differential are reported** ([appendix P](appendix.md)) |
 
 Numbers come from the 2026-07-21 Trilliant snapshot (database built 2026-09-13 with per-diem
 conversion). They are Trilliant-derived national summaries, so this file stays in the private
@@ -250,6 +250,64 @@ The design is locked in [`childbirth_analytic_spec.md`](childbirth_analytic_spec
     adjusted within-state estimate printed beside it: the two can point in different directions,
     and a plot whose line quietly contradicts the number beside it is worse than either alone.
 
+### Result: the association does not survive its own placebo
+
+The ten WONDER exports were obtained on 2026-09-19 and the analysis ran on 578 counties.
+**The headline association is real and the finding is not.** Full audit in
+[`appendix.md` section P](appendix.md).
+
+| Model | Estimate (pp per doubling) | 95% CI | p | Counties |
+|---|---|---|---|---|
+| Unadjusted, state fixed effects | -0.76 | -2.44 to +0.43 | 0.25 | 578 |
+| **Primary (adjusted)** | **-1.23** | -2.57 to -0.07 | **0.037** | **337** |
+| Radius 15 miles | -0.89 | -1.44 to -0.16 | 0.015 | 337 |
+| Radius 60 miles | -1.33 | -3.32 to -0.04 | 0.045 | 337 |
+| Extended covariates | -1.23 | -2.22 to -0.20 | 0.024 | 337 |
+| Quasi-binomial (CR1) | -1.18 | | 0.009 | 337 |
+| **Placebo: 2016-2019 rate** | **-2.02** | **-3.68 to -0.65** | **0.008** | **337** |
+| Negative control: multiple-birth share | -0.03 | -0.09 to +0.03 | 0.28 | 337 |
+| State of residence, unadjusted | -0.42 | -1.36 to +0.81 | 0.43 | 51 |
+
+**The placebo is significant, and larger than the primary estimate.** Midwife supply measured
+today is associated with the NTSV cesarean rate of 2016-2019 (-2.02 pp) more strongly than with
+the rate of 2022-2024 (-1.23 pp). Midwives practising now cannot have changed deliveries seven
+years ago. A causal effect predicts the contemporaneous association to be the stronger of the
+two; the observed ordering is the reverse.
+
+What produces that pattern is a county characteristic, stable across both periods, that both
+attracts midwives and goes with fewer cesareans. County NTSV rates are highly persistent
+(r = 0.74 between the two periods), so there is plenty of such signal to pick up. The model is
+measuring place, not midwifery.
+
+The negative control passed (p = 0.28), so this is not a generic artefact of the weighting or the
+bootstrap. It is confounding by place specifically, which is the failure mode an ecological
+cross-sectional design is most exposed to, and which the spec named as the reason these are
+associations rather than effects.
+
+**A second, independent reason not to lean on the primary estimate.** It runs on 337 of 578
+counties, and the counties are not lost at random. `share_hispanic` is missing for 236 counties,
+because WONDER suppresses cells of 1 to 9 births and in counties with few Hispanic births that
+cell is suppressed. Adjusting for Hispanic share therefore restricts the analysis to counties with
+enough Hispanic births to clear suppression, which are larger and more diverse than average. The
+unadjusted model, on all 578, is null (p = 0.25). The significant estimate exists only in the
+selected subset.
+
+**What is reported.** The negative result: a county-level association between midwife supply and
+the NTSV cesarean rate exists but fails falsification, so these data do not support an effect of
+midwife supply on NTSV cesarean rates. **The implied facility price differential is not
+reported.** It computed (about 7,900 fewer commercial and 4,400 fewer Medicaid cesareans a year at
+the interquartile contrast), but it is arithmetic on a slope that does not survive its own test,
+and publishing a dollar figure derived from it would give a discredited estimate a second life in
+a more quotable form.
+
+`check_ntsv_falsification()` in `R/validation.R` fails whenever a falsification model is
+significant, so this verdict sits in `validation_report.md` beside every other check rather than
+depending on anyone choosing to mention it.
+
+**Descriptives, which stand regardless.** Median county NTSV cesarean rate 26.1% across the 578
+counties WONDER reports, against the Healthy People 2030 target of 23.6%. Median midwife supply
+3.49 per 1,000 births (IQR 2.14 to 5.11).
+
 **Why exports by hand.**
 - The NCHS public-use microdata has no geography.
 - The WONDER API refuses sub-national natality.
@@ -263,6 +321,11 @@ Suppressed WONDER cells (1-9 births) are never read as zero. Rates and shares ar
 value is set to missing when suppression could move it by more than 1 percentage point.
 
 ## 7. Caveats
+
+- **The NTSV analysis returned a negative result.** The association between midwife supply and the
+  county NTSV cesarean rate fails a prespecified placebo, so no effect estimate and no implied
+  facility price differential are reported. Section 6 and [appendix P](appendix.md) have the full
+  account. The descriptive NTSV rates stand.
 
 - **The benchmark is not what Medicare pays a given hospital.** It omits the IME, DSH, outlier,
   and quality adjustments (section 3).

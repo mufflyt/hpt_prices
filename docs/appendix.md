@@ -428,6 +428,16 @@ Virginia, North Carolina, Vermont, Kansas, Georgia, and Connecticut's Medicare A
 
 ## J. Known data issues and caveats
 
+- **The NTSV result is negative and withdrawn.** Midwife supply is associated with the county NTSV
+  cesarean rate (-1.23 pp per doubling, p = 0.037), and the association fails its prespecified
+  placebo: the same exposure predicts the 2016-2019 rate more strongly (-2.02 pp, p = 0.008) than
+  the contemporaneous one. No effect estimate and no implied price differential are reported
+  (section P).
+- **WONDER suppression selects the adjusted NTSV sample.** `share_hispanic` cannot be computed for
+  236 of 578 counties, because cells of 1 to 9 births are suppressed and are never read as zero.
+  Adjusting for it restricts the primary model to 337 larger, more diverse counties; the
+  unadjusted model on all 578 is null (section P5).
+
 - **IUD insertion (58300) is not covered by traditional Medicare** (OPPS status E1; PFS status N).
   Hospital-listed Medicare and Medicare Advantage rates for it are not payment benchmarks, the OPPS
   check is skipped, and 58300 is omitted wherever a Medicare-relative comparison would be drawn.
@@ -751,3 +761,146 @@ any flag get computed and then ignored?
   its caption how many of the drawn bars are provisional, and `docs/addon_methods.md` names the
   device paid share as provisional in the same sentence that calls it the only sign-flipper. The
   model was already doing the right thing and saying so quietly; this makes it hard to miss.
+
+## P. The NTSV result and why it was withdrawn
+
+`analysis/18`, run 2026-09-19 on the ten CDC WONDER exports obtained the same day. This section
+records a negative result in full, including the estimate that was not reported and the reasoning
+that retired it, so that the decision can be checked rather than taken on trust.
+
+### P1. What was asked
+
+Whether county midwife supply is associated with the NTSV cesarean rate, and what facility price
+differential such an association would imply. NTSV (nulliparous, term, singleton, vertex) is the
+cesarean measure used for quality comparison because it holds case mix roughly fixed: first birth,
+37 weeks or more, one baby, head down. The Healthy People 2030 target is 23.6%.
+
+The design was fixed and written down before the data existed
+([`childbirth_analytic_spec.md`](childbirth_analytic_spec.md)), including the falsification tests.
+That ordering matters for what follows: the placebo was not added after an inconvenient result, it
+was a precondition of believing a convenient one.
+
+### P2. Inputs
+
+| Input | Value |
+|---|---|
+| WONDER exports | 10, dataset D149 (Natality, 2016-2024 expanded), all passing `wonder_export_audit()` |
+| Counties reported by WONDER | 627 (those of 100,000+ residents) |
+| Counties in the analysis | 578 (627 less those without a population centre or birth denominator) |
+| Midwife roster | 12,170 active AMCB-certified midwives, all 50 states and DC |
+| Outcome | NTSV cesarean rate 2022-2024; median 26.1% |
+| Exposure | midwives within 30 miles per 1,000 births; median 3.49, IQR 2.14 to 5.11 |
+
+### P3. Every model
+
+| Model | Estimate (pp per doubling) | 95% CI | p | Counties | States |
+|---|---|---|---|---|---|
+| Unadjusted, state fixed effects | -0.761 | -2.435 to +0.428 | 0.250 | 578 | 50 |
+| Primary (adjusted) | -1.233 | -2.569 to -0.069 | 0.037 | 337 | 45 |
+| Radius 15 miles | -0.890 | -1.443 to -0.163 | 0.015 | 337 | 45 |
+| Radius 60 miles | -1.332 | -3.316 to -0.035 | 0.045 | 337 | 45 |
+| Extended covariates (gestational hypertension, diabetes) | -1.231 | -2.223 to -0.198 | 0.024 | 337 | 45 |
+| Birth centre within radius | -0.609 | -1.650 to +0.608 | 0.236 | 337 | 45 |
+| Quasi-binomial logit, CR1 by state | -1.179 | | 0.009 | 337 | 45 |
+| **Placebo: 2016-2019 NTSV rate** | **-2.018** | **-3.678 to -0.652** | **0.008** | 337 | 45 |
+| Negative control: multiple-birth share | -0.033 | -0.091 to +0.033 | 0.279 | 337 | 45 |
+| State of residence, unadjusted | -0.416 | -1.364 to +0.806 | 0.435 | 51 | 51 |
+
+Intervals and p values come from the wild cluster restricted bootstrap clustered by state, 9,999
+draws, Webb weights, by test inversion.
+
+### P4. Why the placebo kills it
+
+The placebo refits the primary model with the 2016-2019 NTSV rate as the outcome, holding the
+exposure at midwife supply measured today. Midwives practising in 2022-2024 cannot have changed
+deliveries in 2016-2019, so under a causal reading the placebo coefficient should be near zero.
+
+It is **-2.02 pp, p = 0.008**, and it is **larger in magnitude than the primary estimate** of
+-1.23. This is the decisive detail. A weak but nonzero placebo could be argued to reflect
+persistence in midwife supply itself, with the same midwives present in both periods. But a
+placebo that *exceeds* the contemporaneous estimate cannot be read that way: if the exposure acted
+on the outcome, its association with the contemporaneous outcome should be the stronger one. The
+ordering is reversed.
+
+The mechanism is visible in the data. County NTSV rates correlate at **r = 0.74** between the two
+periods. Counties have persistent characteristics, clinical culture, hospital practice style,
+patient population, referral patterns, that set their cesarean rate and change slowly. Midwives do
+not locate at random with respect to those characteristics. The model attributes to midwife supply
+a difference that was already present before the supply was measured.
+
+The negative control (multiple-birth share, p = 0.28) passed. That matters: it rules out a generic
+artefact of the weighting, the clustering or the bootstrap, and localises the problem to
+confounding by place. It makes the placebo failure more credible, not less.
+
+### P5. A second, independent reason
+
+The primary model runs on **337 of 578 counties**, and they are not a random 337.
+
+`share_hispanic` is missing for **236 counties**. WONDER suppresses any cell of 1 to 9 births, so
+in a county with few Hispanic births that cell is suppressed and the share cannot be computed. The
+project refuses to read a suppressed cell as zero (section M), which is correct, but the
+consequence is that adjusting for Hispanic share silently restricts the analysis to counties with
+enough Hispanic births to clear suppression: larger, more diverse, more urban than average.
+
+Missingness in the other covariates is minor by comparison: age 35+ 19 counties, Black share 6,
+income, uninsurance and rurality 8 each.
+
+So the significant estimate exists only in a selected subset, and **the unadjusted model on all
+578 counties is null** (-0.76, p = 0.25). Either fact alone would warrant caution. Together with
+the placebo they are decisive.
+
+### P6. What was withdrawn
+
+**The implied facility price differential is not reported.** It was computed, and at the
+interquartile contrast of the exposure it came to roughly 7,900 fewer commercial and 4,400 fewer
+Medicaid cesareans a year across the 574 costed counties, with the dollar figures in
+`output/ntsv_implied_facility_price_differential.csv`.
+
+It is not reported because it is arithmetic on a slope that fails its own falsification test.
+A price figure is more quotable than the coefficient behind it and travels further from its
+caveats, so publishing one derived from a discredited estimate would give that estimate a second
+life in a more durable form.
+
+### P7. What is reported
+
+A negative result. A county-level association between midwife supply and the NTSV cesarean rate is
+present and survives adjustment, radius changes and a quasi-binomial specification, and it fails a
+prespecified placebo. These data do not support an effect of midwife supply on NTSV cesarean
+rates, and the design cannot distinguish such an effect from the persistent county characteristics
+that attract midwives.
+
+This is a limitation of the design rather than of the data, and it was foreseeable: an ecological
+cross-sectional comparison is most exposed to exactly this failure. What the falsification tests
+bought is knowing it, rather than publishing -1.23 with a note that residual confounding is
+possible.
+
+The descriptive results stand: 578 counties of 100,000+ residents, median NTSV cesarean rate
+26.1%, against the Healthy People 2030 target of 23.6%.
+
+### P8. Where the verdict is recorded
+
+`check_ntsv_falsification()` in `R/validation.R` reads `output/ntsv_models.csv` and fails whenever
+a placebo or negative-control model reaches p < 0.05:
+
+    fail  ntsv_falsification  a falsification model is significant, so the headline
+          association is not attributable to midwifery: placebo outcome:
+          2016-2019 NTSV rate (p = 0.0081)
+
+It sits in `validation_report.md` beside every other check. The temptation with a falsification
+test is to explain it away in prose written later, so the verdict is recorded where the rest of
+the quality report is, and a build that reinstated the headline would show a failing check.
+
+### P9. What would answer the question
+
+Not this design. The association is real and the mechanism is untestable here, so distinguishing
+the two needs variation in midwife supply that is not a fixed property of the county:
+
+- a change design, using counties where midwife supply moved, with the outcome measured before
+  and after, so each county is its own control;
+- an instrument for midwife supply, such as scope-of-practice law changes or the opening of a
+  training programme, that moves supply without acting on cesarean rates directly;
+- individual-level data linking the attendant to the delivery, which birth certificates carry but
+  which cannot be obtained at county level from WONDER.
+
+The code is unchanged and ready for any of these: the exposure, the price step and the
+falsification harness all stay, and only the outcome panel and the identification strategy change.

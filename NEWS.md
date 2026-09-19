@@ -3,6 +3,30 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-19 (the midwifery finding did not hold up, and that is the finding)
+
+**The result looked good and then failed the test built to catch exactly this.** Counties with
+more midwives do have lower first-birth cesarean rates, and the association held up under every
+adjustment we tried.
+
+Before the data existed we committed to one check: run the same comparison against births from
+2016 to 2019. Midwives practising today cannot have changed deliveries seven years ago, so that
+comparison should come back empty. It did not. It came back **stronger** than the real one.
+
+That means the analysis is measuring the county, not the midwives. Places differ in ways that
+change slowly, clinical culture, hospital practice, the patients they serve, and those differences
+were already there before we counted anyone. Midwives are more common in the kind of county that
+already had fewer cesareans.
+
+**So we are not reporting the finding, and we are not reporting the dollar figure that came with
+it.** The price estimate worked out to thousands of avoided cesareans a year, which is exactly why
+it would have been quoted long after the caveat was forgotten.
+
+The honest result is the negative one, and it is worth having. The check that killed it is now part
+of the standard quality report, so no future version of this analysis can quietly reinstate the
+headline. What still stands: across the 578 largest counties, the median first-birth cesarean rate
+is 26.1%, against a national target of 23.6%.
+
 ## 2026-09-19 (a spell-checker for the birth data downloads)
 
 **The ten birth-data files have to be built by hand, and a wrong one does not look wrong.** Each
