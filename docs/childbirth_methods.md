@@ -6,7 +6,7 @@ Three analyses, in the order they depend on each other:
 |---|---|---|
 | `analysis/16_childbirth_prices.R` | What does a hospital birth cost commercial insurers and Medicaid, relative to Medicare, and how much more is a cesarean? | Descriptive results below |
 | `analysis/17_midwifery_presence.R` | Are delivery prices or the cesarean premium different where more midwives practice? | Exploratory; null |
-| `analysis/18_ntsv_midwife_supply.R` | Does midwife supply relate to the NTSV cesarean rate, and what facility price differential would that imply? | Design locked ([`childbirth_analytic_spec.md`](childbirth_analytic_spec.md)); code ready; waiting on the CDC WONDER exports |
+| `analysis/18_ntsv_midwife_supply.R` | Does midwife supply relate to the NTSV cesarean rate, and what facility price differential would that imply? | Design locked ([`childbirth_analytic_spec.md`](childbirth_analytic_spec.md)); code and preflight ready; waiting on the CDC WONDER exports |
 
 Numbers come from the 2026-07-21 Trilliant snapshot (database built 2026-09-13 with per-diem
 conversion). They are Trilliant-derived national summaries, so this file stays in the private

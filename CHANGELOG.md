@@ -2,6 +2,49 @@
 
 Grouped by date. There is no package version.
 
+## 2026-09-19 (the WONDER exports get a preflight)
+
+### Added
+- **`R/wonder_preflight.R`**: `wonder_export_audit()` checks every expected CDC WONDER export
+  against the specification it is supposed to satisfy, reading each file's own Notes block rather
+  than trusting the request form. It verifies the grouping variables, the years, the NTSV
+  restrictions (present where required, absent from the all-births negative control), that the
+  file parses, and that the geography count is plausible. It reports every problem at once
+  instead of stopping at the first.
+- **`tools/check_wonder_exports.R`**: run it the moment the exports land. Seconds rather than the
+  twenty minutes a model fit takes, and it exits non-zero so it can gate a run. Writes
+  `output/ntsv_wonder_audit.csv`.
+- **Two validation checks**, so stage 18 is covered by the standard report like every other stage
+  (category `ntsv`): `check_wonder_exports()` skips while the exports are absent, warns when some
+  are missing but the present ones are consistent, and **fails when a present file is wrong**,
+  because a mis-built export is worse than a missing one; and `check_ntsv_falsification()`, which
+  fails if the placebo or negative-control model is significant.
+
+### Why
+The ten exports are built by hand in a web form, one dropdown at a time, and **a wrong one does
+not look wrong**. Grouping by "Age of Mother 10" instead of "Age of Mother 9", or leaving the
+placebo on 2022-2024, or picking only the 37-38 week category, all yield a well-formed file with
+believable counts that would flow through the whole analysis and change the answer with nothing to
+flag it. Stage 18 previously checked only that the NTSV filters appeared somewhere in the Notes,
+and nothing at all checked the grouping or the years.
+
+`check_ntsv_falsification()` exists for a different reason. The placebo and negative control are
+the tests that can kill the headline result, and the temptation with a falsification test is to
+explain it away afterwards. Putting the verdict in the validation report, beside every other
+check, states it where it cannot be quietly dropped from a write-up.
+
+### Changed
+- `analysis/18` runs the audit before reading anything and stops on a mis-built export, with the
+  same `HPT_WONDER_SKIP_FILTER_CHECK=true` escape hatch as before. Its provenance output now
+  carries the row and geography counts and a `consistent_with_spec` column.
+- `wonder_notes()` and the filter markers moved into `R/wonder_preflight.R` so the preflight and
+  stage 18 share one definition and cannot drift. That drift is exactly what produced yesterday's
+  bug, where the markers described a different wording from the one CDC writes.
+- `tools/post_extract_refresh.sh` runs stage 18 when the preflight passes, and skips it without
+  failing the refresh when the exports are not there yet. A failure in any stage now also exits
+  non-zero, which it did not before: stage failures were printed before the later stages ran, so a
+  late failure was reported and then forgotten.
+
 ## 2026-09-18 (the midwife roster goes national)
 
 ### Changed
