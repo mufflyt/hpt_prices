@@ -3,6 +3,24 @@
 User-facing highlights. For the exhaustive technical log, see [`CHANGELOG.md`](CHANGELOG.md). For
 methods and every cleaning rule, see [`docs/appendix.md`](docs/appendix.md).
 
+## 2026-09-19 (a spell-checker for the birth data downloads)
+
+**The ten birth-data files have to be built by hand, and a wrong one does not look wrong.** Each
+comes from a web form with a dropdown for the grouping and another for the years. Pick the
+slightly wrong age grouping, or leave the comparison years on the wrong period, and you still get
+a tidy file full of believable numbers that would quietly change the answer.
+
+There is now a check that reads each file's own record of how it was made and compares it against
+what the analysis expects. It takes seconds, names every problem at once rather than stopping at
+the first, and runs before the twenty-minute analysis rather than during it.
+
+**It also records whether the result survived the tests designed to kill it.** The analysis
+includes a placebo, run against births from years the midwife supply cannot have affected, and a
+negative control, run against the twin rate. If either of those comes back significant, the
+headline finding is measuring something other than midwifery. That verdict now sits in the
+standard quality report next to every other check, rather than depending on someone choosing to
+mention it.
+
 ## 2026-09-18 (the national midwife list was on the machine all along)
 
 **Eleven states are back.** The midwife list this project used covered 40 states, so any hospital
